@@ -56,7 +56,7 @@ function Lookup({ adminKey }) {
 
   return (
     <React.Fragment>
-      <form onSubmit={submit} className="filters" style={{ gridTemplateColumns: "1fr auto" }}>
+      <form onSubmit={submit} className="filters-single">
         <label>
           <span className="tag">Ticket ID</span>
           <input value={ticketId} onChange={(e) => setTicketId(e.target.value)}

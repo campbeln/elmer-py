@@ -256,6 +256,60 @@ def _admin_guard(elmer, request, response):
     return True
 
 
+def _public_tracking_url(elmer, request, ticket_id):
+    """Build the absolute /www/view.html?id= link for a ticket.
+
+    Prefers a configured public base URL (reliable behind a proxy/CDN,
+    where the request's own Host header may not be the public one — e.g.
+    Vercel's internal routing) and falls back to the live request's host.
+    """
+    base = elmer.type.str.mk(elmer.resolve(elmer.app.config, "publicBaseUrl"))
+    if not base:
+        base = getattr(request.raw, "host_url", "").rstrip("/")
+    return base + "/www/view.html?id=" + elmer.type.str.mk(ticket_id)
+
+
+def _notify(elmer, request, event, ticket, update=None):
+    """Stub notification hook — fires on ticket create/status-update/
+    reporter-message events so a real integration (email, Slack, SMS...)
+    has a single, already-wired point to hang off later.
+
+    Currently a no-op unless NOTIFY_WEBHOOK_URL (or notifications.webhookUrl
+    in config) is configured, in which case it POSTs a JSON payload
+    carrying exactly what a notification would need: the public tracking
+    link, and the latest status update's status/message/timestamp. Never
+    allowed to fail the request that triggered it — a slow or broken
+    notification target must not block ticket creation/updates.
+
+    event: "ticket_created" | "status_updated" | "reporter_message_added"
+    ticket: the ticket row (dict-like)
+    update: the ticket_status_updates row just written, if any
+    """
+    webhook_url = (os.environ.get("NOTIFY_WEBHOOK_URL")
+                  or elmer.type.str.mk(
+                      elmer.resolve(elmer.app.config, "notifications.webhookUrl")))
+    if not webhook_url:
+        return  # stub: nothing configured to call yet
+
+    payload = Obj({
+        "event": event,
+        "ticketId": ticket.get("id"),
+        "viewUrl": _public_tracking_url(elmer, request, ticket.get("id")),
+        "subject": ticket.get("subject"),
+        "priority": ticket.get("priority"),
+        "status": (update or ticket).get("status") or ticket.get("status"),
+        "message": elmer.resolve(update, "message"),
+        "timestamp": elmer.resolve(
+            update, "created_at", elmer.type.date.timestamp()),
+    })
+
+    try:
+        elmer.io.net.post(webhook_url, dict(payload),
+                          {"contentType": "application/json", "timeout": 3})
+    except Exception:
+        pass  # stub: notification delivery is best-effort, never fatal
+
+
 def _diagnose(elmer, result):
     """Enrich a failed Supabase response with an actionable hint.
 
@@ -323,9 +377,20 @@ def apply(elmer, router, base_router=None):
         # SECURITY (2026-08-06 audit): the admin-key check itself is
         # constant-time, but nothing previously limited how many guesses a
         # caller could make against it.
+        #
+        # UX FIX (2026-08-06, same day): every managetickets page load
+        # calls this at least once (a cookie check or the ambient-header
+        # probe — see shared.jsx's KeyGate), not just explicit login
+        # attempts. 15/5min was tight enough that realistic multi-tab
+        # browsing could legitimately exhaust it — found via the test
+        # suite hitting the exact same wall a heavy real user would. 40
+        # still meaningfully throttles brute-force guessing (480/hour
+        # against a high-entropy secret, where hmac.compare_digest's
+        # constant-time comparison is the actual primary defense) while
+        # comfortably covering real usage.
         from app.middleware._ratelimit import check
         allowed, retry_after = check("manage-verify", request,
-                                     max_requests=15, window_seconds=300)
+                                     max_requests=40, window_seconds=300)
         if not allowed:
             response.set("Retry-After", str(retry_after))
             return elmer.app.error.response(
@@ -386,9 +451,11 @@ def apply(elmer, router, base_router=None):
             )
 
         ticket = result.data[0] if isinstance(result.data, list) else result.data
+        _notify(elmer, request, "ticket_created", ticket)
         response.status(elmer.io.net.status.success.created).json({
             "success": True,
             "ticket": ticket,
+            "viewUrl": _public_tracking_url(elmer, request, ticket.get("id")),
         })
 
     # ----------------------------------------------
@@ -572,6 +639,7 @@ def apply(elmer, router, base_router=None):
                 "ticket_id": ticket_id,
                 "status": status,
                 "message": message or None,
+                "author": "staff",
             })
             if record.ok:
                 entries = record.data or []
@@ -579,6 +647,7 @@ def apply(elmer, router, base_router=None):
             else:
                 payload.history_error = True
 
+        _notify(elmer, request, "status_updated", rows[0], payload["update"])
         response.status(200).json(payload)
 
     # ----------------------------------------------
@@ -629,7 +698,8 @@ def apply(elmer, router, base_router=None):
                 updates = [
                     {"status": u.get("status"),
                      "message": u.get("message"),
-                     "created_at": u.get("created_at")}
+                     "created_at": u.get("created_at"),
+                     "author": u.get("author", "staff")}
                     for u in (fetched.data or [])
                 ]
 
@@ -644,4 +714,98 @@ def apply(elmer, router, base_router=None):
                 "updated_at": ticket.get("updated_at"),
             },
             "updates": updates,
+        })
+
+    # ----------------------------------------------
+    # POST /tickets/:id/reporter-message — end-user note, NO admin key
+    # ----------------------------------------------
+    # The public counterpart to POST /tickets/:id/status: same message
+    # collection UX, but a reporter can only ADD a note, never change the
+    # ticket's status (author="reporter" rows carry status=NULL — an
+    # informational entry, not a lifecycle transition). Same unguessable-
+    # UUID-as-access-token model as GET /tickets/:id/public.
+    @router.post("/:id/reporter-message")
+    def _reporter_message(request, response):
+        # Public + unauthenticated write endpoint — rate-limited for the
+        # same reason ticket creation is (spam/resource exhaustion).
+        from app.middleware._ratelimit import check
+        allowed, retry_after = check("reporter-message", request,
+                                     max_requests=15, window_seconds=300)
+        if not allowed:
+            response.set("Retry-After", str(retry_after))
+            return elmer.app.error.response(
+                response,
+                Obj({"message": "Too many messages submitted. Try again shortly.",
+                     "details": {"retryAfterSeconds": retry_after}}),
+                429,
+            )
+
+        table = _table(elmer)
+        if table is None:
+            return unavailable(response)
+
+        ticket_id = elmer.type.str.mk(request.params.get("id")).strip()
+        if not _UUID_RE.match(ticket_id):
+            return elmer.app.error.response(
+                response, "Ticket id must be a UUID.",
+                elmer.io.net.status.clientError.badRequest,
+            )
+
+        message = elmer.type.str.mk(
+            elmer.resolve(request.body, "message")).strip()
+        if not message:
+            return elmer.app.error.response(
+                response, "'message' is required.",
+                elmer.io.net.status.clientError.badRequest,
+            )
+        if len(message) > 2000:
+            return elmer.app.error.response(
+                response, "'message' must be 2000 characters or fewer.",
+                elmer.io.net.status.clientError.badRequest,
+            )
+
+        # Confirm the ticket exists before recording a note against it —
+        # also gives _notify() a real ticket row to build the tracking
+        # link and subject/priority from.
+        existing = table.select({"id": "eq." + ticket_id}, limit=1)
+        if not existing.ok:
+            return elmer.app.error.response(
+                response,
+                Obj({"message": "Ticket could not be read.",
+                     "details": _diagnose(elmer, existing)}),
+                elmer.io.net.status.serverError.badGateway,
+            )
+        rows = existing.data or []
+        if not rows:
+            return elmer.app.error.response(
+                response, "Ticket not found.",
+                elmer.io.net.status.clientError.notFound,
+            )
+        ticket = rows[0]
+
+        history = _table(elmer, "ticket_status_updates")
+        if history is None:
+            return unavailable(response)
+
+        record = history.insert({
+            "ticket_id": ticket_id,
+            "status": None,
+            "message": message,
+            "author": "reporter",
+        })
+        if not record.ok:
+            return elmer.app.error.response(
+                response,
+                Obj({"message": "Message could not be saved.",
+                     "details": _diagnose(elmer, record)}),
+                elmer.io.net.status.serverError.badGateway,
+            )
+
+        entries = record.data or []
+        update = entries[0] if entries else None
+        _notify(elmer, request, "reporter_message_added", ticket, update)
+
+        response.status(elmer.io.net.status.success.created).json({
+            "success": True,
+            "update": update,
         })

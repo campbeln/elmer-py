@@ -22,7 +22,14 @@ fi
 
 python3 stub_supabase.py > /tmp/elmer-test-stub.log 2>&1 &
 STUB_PID=$!
-(cd "$ROOT" && python3 _index.py dev > /tmp/elmer-test-server.log 2>&1) &
+# `exec` replaces this subshell's process image with python3's, so $!
+# captures python3's own PID rather than a subshell wrapping it — without
+# this, `kill $SERVER_PID` on exit can silently fail to stop the actual
+# server, leaving an orphan that keeps listening on :3001 and keeps
+# accumulating in-process rate-limit state across every later test run
+# (this happened for real during development: a stray server survived
+# from one run.sh invocation to the next and started 429-ing all of them).
+(cd "$ROOT" && exec python3 _index.py dev > /tmp/elmer-test-server.log 2>&1) &
 SERVER_PID=$!
 trap 'kill $STUB_PID $SERVER_PID 2>/dev/null' EXIT
 
@@ -33,7 +40,7 @@ for i in $(seq 1 20); do
 done
 
 FAILED=0
-for t in test_queue.js test_view_and_status.js test_submit_form.js test_ambient_key.js test_public_view.js; do
+for t in test_queue.js test_view_and_status.js test_submit_form.js test_ambient_key.js test_public_view.js test_session_cookie.js test_reporter_message.js test_responsive_css.js; do
     echo "============================================================"
     echo "$t"
     echo "============================================================"

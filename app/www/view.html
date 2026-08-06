@@ -46,6 +46,13 @@ function TicketStatus() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
+  // "Add information" form state, kept separate from the lookup form.
+  const [showForm, setShowForm] = useState(false);
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState(null);
+  const [sent, setSent] = useState(false);
+
   useEffect(() => {
     fetch("/tickets/meta/priorities")
       .then((r) => (r.ok ? r.json() : null))
@@ -87,6 +94,34 @@ function TicketStatus() {
     load(ticketId);
   }
 
+  async function submitMessage(e) {
+    e.preventDefault();
+    setSending(true);
+    setSendError(null);
+    try {
+      const res = await fetch(
+        "/tickets/" + encodeURIComponent(ticketId.trim()) + "/reporter-message",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message }),
+        });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setMessage("");
+        setShowForm(false);
+        setSent(true);
+        await load(ticketId);   // refresh the timeline with the new entry
+      } else {
+        setSendError(data.error || "Your message could not be saved.");
+      }
+    } catch (err) {
+      setSendError("The support API is unreachable right now.");
+    } finally {
+      setSending(false);
+    }
+  }
+
   return (
     <React.Fragment>
       <header className="brand">
@@ -103,8 +138,7 @@ function TicketStatus() {
         Your ticket ID was shown when you submitted.
       </p>
 
-      <form onSubmit={submit} className="filters"
-            style={{ gridTemplateColumns: "1fr auto" }}>
+      <form onSubmit={submit} className="filters-single">
         <label>
           <span className="tag">Ticket ID</span>
           <input value={ticketId} onChange={(e) => setTicketId(e.target.value)}
@@ -144,7 +178,9 @@ function TicketStatus() {
                 {updates.map((u, i) => (
                   <div className="update-entry" key={i}>
                     <div className="head">
-                      <StatusBadge status={u.status} />
+                      {u.status
+                        ? <StatusBadge status={u.status} />
+                        : <span className="author-tag" data-a="reporter">Your note</span>}
                       <span className="when">{fmtDate(u.created_at)}</span>
                     </div>
                     {u.message
@@ -153,6 +189,42 @@ function TicketStatus() {
                   </div>
                 ))}
               </div>
+            )}
+          </div>
+
+          <div className="field">
+            <span className="tag">Add information</span>
+            {sent && !showForm && (
+              <div className="success-line" role="status" style={{ marginBottom: 12 }}>
+                Your message was added below — thanks for the update.
+              </div>
+            )}
+            {!showForm ? (
+              <div>
+                <button type="button" className="btn-quiet"
+                        onClick={() => { setShowForm(true); setSent(false); }}>
+                  Add information for the team
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={submitMessage} style={{ display: "grid", gap: 12 }}>
+                <textarea value={message} maxLength={2000}
+                          onChange={(e) => setMessage(e.target.value)}
+                          placeholder="Anything new to add — more detail, a screenshot description, whether this is still happening."
+                          style={{ minHeight: 90, resize: "vertical" }}
+                          autoFocus />
+                {sendError && <div className="error" role="alert">{sendError}</div>}
+                <div className="actions" style={{ marginTop: 0 }}>
+                  <button className="btn" type="submit"
+                          disabled={sending || !message.trim()}>
+                    {sending ? "Sending…" : "Send"}<span className="arrow">→</span>
+                  </button>
+                  <button type="button" className="btn-quiet"
+                          onClick={() => { setShowForm(false); setSendError(null); }}>
+                    Cancel
+                  </button>
+                </div>
+              </form>
             )}
           </div>
         </div>

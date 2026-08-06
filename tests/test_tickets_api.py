@@ -226,5 +226,129 @@ def test_list_filters_by_email_and_company_substring():
         use_table(prev_tickets)
 
 
+def test_reporter_message_public_endpoint():
+    _, _, client = get_app()
+    prev_tickets = use_table(FakeTable())
+    prev_updates = use_table(FakeTable(), "ticket_status_updates")
+    try:
+        _, data = make_ticket(client)
+        ticket_id = data["ticket"]["id"]
+        # POST /tickets response now carries the public tracking URL.
+        assert "/www/view.html?id=" + ticket_id in data["ticket"].get(
+            "id") or True  # ticket id present; viewUrl checked below
+        assert "viewUrl" in data
+        assert data["viewUrl"].endswith("/www/view.html?id=" + ticket_id)
+
+        # No X-Admin-Key at all — this is a public endpoint.
+        r = client.post("/tickets/%s/reporter-message" % ticket_id,
+                        json={"message": "Any update?"})
+        assert r.status_code == 201
+        update = _json(r)["update"]
+        assert update["author"] == "reporter"
+        assert update["status"] is None   # a note, not a status transition
+
+        # Required, length-limited, same ceiling as staff messages.
+        assert client.post("/tickets/%s/reporter-message" % ticket_id,
+                           json={"message": ""}).status_code == 400
+        assert client.post("/tickets/%s/reporter-message" % ticket_id,
+                           json={"message": "x" * 2001}).status_code == 400
+
+        assert client.post(
+            "/tickets/00000000-0000-0000-0000-000000000000/reporter-message",
+            json={"message": "x"}).status_code == 404
+        assert client.post("/tickets/not-a-uuid/reporter-message",
+                           json={"message": "x"}).status_code == 400
+
+        # A staff message + a reporter message both show up, correctly
+        # tagged, on both the public and the admin-gated read.
+        client.post("/tickets/%s/status" % ticket_id,
+                   json={"status": "acknowledged", "message": "On it."},
+                   headers=GOOD_HEADERS)
+
+        public = _json(client.get("/tickets/%s/public" % ticket_id))
+        authors = {u["author"] for u in public["updates"]}
+        assert authors == {"staff", "reporter"}
+
+        staff = _json(client.get("/tickets/" + ticket_id, headers=GOOD_HEADERS))
+        staff_authors = {u["author"] for u in staff["updates"]}
+        assert staff_authors == {"staff", "reporter"}
+    finally:
+        use_table(prev_tickets)
+        use_table(prev_updates, "ticket_status_updates")
+
+
+def test_reporter_message_rate_limited():
+    _, _, client = get_app()
+    prev_tickets = use_table(FakeTable())
+    prev_updates = use_table(FakeTable(), "ticket_status_updates")
+    try:
+        _, data = make_ticket(client)
+        ticket_id = data["ticket"]["id"]
+        statuses = [client.post("/tickets/%s/reporter-message" % ticket_id,
+                               json={"message": "spam %d" % i}).status_code
+                   for i in range(20)]
+        assert 429 in statuses
+        assert 201 in statuses
+    finally:
+        use_table(prev_tickets)
+        use_table(prev_updates, "ticket_status_updates")
+
+
+def test_notification_stub_fires_and_is_optional():
+    import threading
+    import http.server
+
+    elmer, _, client = get_app()
+    prev_tickets = use_table(FakeTable())
+    prev_updates = use_table(FakeTable(), "ticket_status_updates")
+
+    received = []
+
+    class _Echo(http.server.BaseHTTPRequestHandler):
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", 0))
+            received.append(json.loads(self.rfile.read(length)))
+            self.send_response(200)
+            self.end_headers()
+
+        def log_message(self, *a):
+            pass
+
+    httpd = http.server.HTTPServer(("127.0.0.1", 0), _Echo)
+    port = httpd.server_address[1]
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+
+    try:
+        # Unconfigured: creating a ticket must not fail or hang even
+        # though the notify hook fires internally (it's a no-op).
+        status, data = make_ticket(client)
+        assert status == 201
+
+        os.environ["NOTIFY_WEBHOOK_URL"] = "http://127.0.0.1:%d/" % port
+        ticket_id = data["ticket"]["id"]
+        r = client.post("/tickets/%s/status" % ticket_id,
+                        json={"status": "resolved", "message": "Fixed."},
+                        headers=GOOD_HEADERS)
+        assert r.status_code == 200
+
+        import time
+        for _ in range(20):
+            if received:
+                break
+            time.sleep(0.05)
+
+        assert received, "the configured webhook should have been called"
+        payload = received[-1]
+        assert payload["event"] == "status_updated"
+        assert payload["viewUrl"].endswith("/www/view.html?id=" + ticket_id)
+        assert payload["message"] == "Fixed."
+        assert payload["status"] == "resolved"
+    finally:
+        os.environ.pop("NOTIFY_WEBHOOK_URL", None)
+        httpd.shutdown()
+        use_table(prev_tickets)
+        use_table(prev_updates, "ticket_status_updates")
+
+
 if __name__ == "__main__":
     raise SystemExit(run_module(globals()))

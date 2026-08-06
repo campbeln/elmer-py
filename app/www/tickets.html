@@ -113,7 +113,7 @@
   .sev .desc { color: var(--muted); font-size: 13px; line-height: 1.5; }
 
   /* -- actions / states ------------------------------------------ */
-  .actions { display: flex; align-items: center; gap: 18px; margin-top: 4px; }
+  .actions { display: flex; align-items: center; gap: 18px; margin-top: 4px; flex-wrap: wrap; }
   .submit {
     font: 600 15px "Space Grotesk", sans-serif; letter-spacing: .02em;
     color: #fff; background: linear-gradient(135deg, var(--violet), var(--violet-deep));
@@ -172,6 +172,17 @@
 
   @media (prefers-reduced-motion: reduce) {
     * { transition: none !important; }
+  }
+
+  /* -- mobile responsiveness --------------------------------------- */
+  @media (max-width: 640px) {
+    #root { padding: 28px 16px 64px; }
+    .submit, .success button, .copy { width: 100%; text-align: center; }
+    .actions .hint { flex-basis: 100%; }
+    input, textarea, .submit, .success button, .copy {
+      font-size: 16px;   /* prevents iOS Safari's auto-zoom on focus */
+    }
+    .sev { padding: 14px 16px 14px 20px; }
   }
 </style>
 </head>

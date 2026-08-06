@@ -9,6 +9,7 @@
 const fs = require("fs");
 const path = require("path");
 const { JSDOM, ResourceLoader, VirtualConsole } = require("jsdom");
+const { CookieJar } = require("tough-cookie");
 
 const BASE = process.env.ELMER_BASE || "http://127.0.0.1:3001";
 const ADMIN_KEY = process.env.TICKETS_ADMIN_KEY || "test-admin-key";
@@ -62,6 +63,10 @@ function setValue(window, element, value) {
 async function openPage(pathname, options = {}) {
   /* options.injectKey: add X-Admin-Key to every fetch the page makes,
    * simulating a reverse proxy or header-injecting extension.
+   * options.cookieJar: a tough-cookie CookieJar pre-populated before the
+   * page's own scripts run — the way to test "a cookie from a previous
+   * page load is already present," since jsdom gives each JSDOM instance
+   * an independent cookie jar unless one is supplied explicitly.
    *
    * jsdomErrors collects jsdom's own error stream. Two uses: it silences
    * harmless noise (e.g. blocked font CDNs in sandboxes), and it is the
@@ -77,6 +82,7 @@ async function openPage(pathname, options = {}) {
     runScripts: "dangerously",
     resources: new Loader(),
     virtualConsole,
+    cookieJar: options.cookieJar,
     pretendToBeVisual: true,
     beforeParse(window) {
       window.fetch = (input, init = {}) => {
@@ -113,5 +119,5 @@ function api(pathname, options = {}) {
   }).then((r) => r.json());
 }
 
-module.exports = { BASE, ADMIN_KEY, Loader, sleep, waitFor, setValue,
+module.exports = { BASE, ADMIN_KEY, Loader, CookieJar, sleep, waitFor, setValue,
                    openPage, unlock, api };

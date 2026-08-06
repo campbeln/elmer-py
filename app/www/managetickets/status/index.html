@@ -21,7 +21,7 @@
 <script type="text/babel" data-presets="react">
 (() => {
 const { useEffect, useState } = React;
-const { useBranding, Brand, Nav, KeyGate, api, SevBadge, StatusBadge } = window.Manage;
+const { useBranding, Brand, Nav, KeyGate, api, SevBadge, StatusBadge, UpdatesList } = window.Manage;
 
 const STATUSES = ["open", "acknowledged", "in_progress", "resolved", "closed"];
 
@@ -30,19 +30,22 @@ function StatusUpdate({ adminKey }) {
   const initial = new URLSearchParams(window.location.search).get("id") || "";
   const [ticketId, setTicketId] = useState(initial);
   const [current, setCurrent] = useState(null);   // loaded ticket, for context
+  const [history, setHistory] = useState([]);      // read-only, same as view.html
   const [status, setStatus] = useState("acknowledged");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
   async function loadCurrent(id) {
-    if (!id || !id.trim()) { setCurrent(null); return; }
+    if (!id || !id.trim()) { setCurrent(null); setHistory([]); return; }
     const res = await api("/tickets/" + encodeURIComponent(id.trim()), adminKey);
     if (res.ok && res.data && res.data.ticket) {
       setCurrent(res.data.ticket);
+      setHistory(res.data.updates || []);
       setError(null);
     } else {
       setCurrent(null);
+      setHistory([]);
     }
   }
 
@@ -86,6 +89,12 @@ function StatusUpdate({ adminKey }) {
               <StatusBadge status={current.status} />
               <span style={{ fontWeight: 500 }}>{current.subject}</span>
             </div>
+            {history.length > 0 && (
+              <div className="field" style={{ marginTop: 16 }}>
+                <span className="tag">History (read only)</span>
+                <UpdatesList updates={history} />
+              </div>
+            )}
           </div>
         )}
 

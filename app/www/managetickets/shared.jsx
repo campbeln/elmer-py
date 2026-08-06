@@ -23,6 +23,34 @@ const SEV_COLORS = { P1: "var(--p1)", P2: "var(--p2)", P3: "var(--p3)", P4: "var
 
 const DEFAULT_BRANDING = { name: "CNRZ", area: "Support" };
 
+/* Session-cookie storage for the management key, so the person isn't
+ * re-prompted on every page load within the same browser session. A
+ * SESSION cookie deliberately has no Max-Age/Expires — the browser
+ * clears it when the browser itself closes (not just the tab), which
+ * keeps the original "don't linger forever" intent while removing the
+ * per-page-load friction. Scoped to /www/managetickets, since that's the
+ * only area that uses it. Note this can only be a JS-readable cookie
+ * (not HttpOnly) since it's set from client-side code with no server
+ * round trip involved in the "remember" step — an accepted trade-off for
+ * an internal console, not a public-facing credential store. */
+const KEY_COOKIE_NAME = "elmer_admin_key";
+
+function getCookie(name) {
+  const match = document.cookie.match(
+    new RegExp("(?:^|; )" + name + "=([^;]*)"));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+function setSessionCookie(name, value) {
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = name + "=" + encodeURIComponent(value)
+    + "; path=/www/managetickets; SameSite=Strict" + secure;
+}
+
+function clearCookie(name) {
+  document.cookie = name + "=; path=/www/managetickets; Max-Age=0; SameSite=Strict";
+}
+
 function useBranding() {
   const [branding, setBranding] = useState(DEFAULT_BRANDING);
   useEffect(() => {
@@ -46,11 +74,19 @@ function Brand({ branding, page }) {
 }
 
 function Nav({ current }) {
+  const [hasCookie, setHasCookie] = useState(() => !!getCookie(KEY_COOKIE_NAME));
   const tabs = [
     { id: "queue", label: "Queue", href: "/www/managetickets/" },
     { id: "view", label: "Look up", href: "/www/managetickets/view/" },
     { id: "status", label: "Update status", href: "/www/managetickets/status/" },
   ];
+
+  function forgetKey() {
+    clearCookie(KEY_COOKIE_NAME);
+    setHasCookie(false);
+    window.location.reload();
+  }
+
   return (
     <nav className="manage-nav" aria-label="Ticket management">
       {tabs.map((t) => (
@@ -58,6 +94,11 @@ function Nav({ current }) {
           {t.label}
         </a>
       ))}
+      {hasCookie && (
+        <button type="button" className="nav-forget" onClick={forgetKey}>
+          Forget key
+        </button>
+      )}
     </nav>
   );
 }
@@ -80,19 +121,22 @@ async function api(path, adminKey, opts = {}) {
 
 /*
  * KeyGate — the page's content only renders once the management key has
- * been verified against POST /tickets/manage/verify. The key lives in
- * component state only: nothing is written to storage, so closing or
- * refreshing the page requires re-entry. That is deliberate.
+ * been verified against POST /tickets/manage/verify.
  *
- * Before prompting, the gate probes verify with NO key attached. Browsers
- * can't add custom headers themselves, but a reverse proxy, header
- * extension, or embedding tool that injects a valid X-Admin-Key onto
- * requests will make that probe succeed — in which case the prompt is
- * skipped entirely and every later API call also omits the header,
- * letting the same injection authenticate it in transit.
+ * Three ways in, tried in order:
+ *   1. A session cookie from a previous unlock on this browser session.
+ *   2. An ambient X-Admin-Key header injected by the environment itself
+ *      (reverse proxy, header extension, embedding tool) — browsers
+ *      can't add custom headers themselves, so this is only detectable
+ *      by probing verify() with no key and seeing whether it succeeds
+ *      anyway.
+ *   3. The manual prompt, whose successful entry is then saved to the
+ *      session cookie so step 1 succeeds on the next page load.
  *
- * Key state: null = probing, "" = ambient header verified (omit ours),
- * non-empty string = key the person typed.
+ * Key state: null = still resolving (probing) or unresolved (show
+ * prompt) — probing is tracked separately; "" = ambient header verified
+ * (omit ours on later calls); non-empty string = a cookie-remembered or
+ * freshly typed key.
  */
 function KeyGate({ children }) {
   const [key, setKey] = useState(null);
@@ -102,10 +146,31 @@ function KeyGate({ children }) {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    api("/tickets/manage/verify", null, { method: "POST" })
-      .then((res) => { if (res.ok) setKey(""); })
-      .catch(() => {})
-      .finally(() => setProbing(false));
+    let cancelled = false;
+
+    (async () => {
+      const cookieKey = getCookie(KEY_COOKIE_NAME);
+      if (cookieKey) {
+        const res = await api("/tickets/manage/verify", cookieKey,
+                              { method: "POST" }).catch(() => null);
+        if (cancelled) return;
+        if (res && res.ok) {
+          setKey(cookieKey);
+          setProbing(false);
+          return;
+        }
+        // Stale/rotated/invalid — don't keep re-trying a dead cookie.
+        clearCookie(KEY_COOKIE_NAME);
+      }
+
+      const ambient = await api("/tickets/manage/verify", null,
+                                { method: "POST" }).catch(() => null);
+      if (cancelled) return;
+      if (ambient && ambient.ok) setKey("");
+      setProbing(false);
+    })();
+
+    return () => { cancelled = true; };
   }, []);
 
   async function verify(e) {
@@ -116,6 +181,7 @@ function KeyGate({ children }) {
       const res = await api("/tickets/manage/verify", entered, { method: "POST" });
       if (res.ok) {
         setKey(entered);
+        setSessionCookie(KEY_COOKIE_NAME, entered);
       } else if (res.status === 503) {
         setError("Management is not enabled on the server — TICKETS_ADMIN_KEY is unset.");
       } else {
@@ -158,8 +224,9 @@ function KeyGate({ children }) {
             </button>
           </div>
           <p className="note">
-            The key is held in memory only and sent as a request header —
-            never stored, never placed in the URL.
+            Stored in a session cookie (cleared when you close your
+            browser) and sent as a request header — never placed in the
+            URL. Use "Forget key" in the nav bar to clear it sooner.
           </p>
         </form>
       </div>
@@ -210,7 +277,11 @@ function fmtDate(iso) {
   try { return new Date(iso).toLocaleString(); } catch (e) { return iso; }
 }
 
-/* Status history timeline (newest first — the API already orders desc). */
+/* Status history timeline (newest first — the API already orders desc).
+ * Staff-authored entries always carry a status and render exactly as
+ * before. Reporter-authored entries are notes, not lifecycle
+ * transitions — they carry no status, so they render a distinct
+ * "Reporter note" tag in its place instead of a StatusBadge. */
 function UpdatesList({ updates }) {
   if (!updates || !updates.length) {
     return <p className="empty" style={{ textAlign: "left", padding: "8px 0" }}>
@@ -222,7 +293,9 @@ function UpdatesList({ updates }) {
       {updates.map((u, i) => (
         <div className="update-entry" key={u.id || i}>
           <div className="head">
-            <StatusBadge status={u.status} />
+            {u.status
+              ? <StatusBadge status={u.status} />
+              : <span className="author-tag" data-a="reporter">Reporter note</span>}
             <span className="when">{fmtDate(u.created_at)}</span>
           </div>
           {u.message
@@ -237,5 +310,6 @@ function UpdatesList({ updates }) {
 window.Manage = {
   useBranding, Brand, Nav, KeyGate, api, SevBadge, StatusBadge, SEV_COLORS,
   fmtDate, UpdatesList, IconEye, IconPencil,
+  getCookie, setSessionCookie, clearCookie, KEY_COOKIE_NAME,
 };
 })();

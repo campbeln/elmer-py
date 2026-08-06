@@ -516,3 +516,77 @@ registers on startup needs to be updated to send it.
 On startup, the app checks whether the shipped example JWT secret or any
 shipped example password is still in use and prints a loud warning to
 stderr if so — it never blocks startup, only nudges.
+
+---
+
+## Responsive design, session-cookie key storage, notification stubs, and end-user updates (2026-08-06)
+
+### Responsive CSS across `/www/`
+
+Every page under `/www/` now targets mobile and desktop as first-class
+layouts (standing project convention going forward — see below). Fixed
+along the way: three pages (`view.html`, `managetickets/view`,
+`managetickets/status`) used `className="filters" style={{
+gridTemplateColumns: "1fr auto" }}` for their single-input lookup forms —
+an inline style, which always overrides a later CSS media query
+regardless of viewport, silently defeating mobile responsiveness on
+exactly those forms. Replaced with a dedicated `.filters-single` class
+carrying its own breakpoint. The management queue table is now wrapped
+for horizontal scroll on narrow viewports, inputs/buttons hit real touch
+targets, and `font-size: 16px` on form fields prevents iOS Safari's
+auto-zoom-on-focus.
+
+**Standing project convention:** all web interfaces built for this
+project use responsive CSS by default, with mobile and desktop both
+treated as first-class targets — an interface only skips this if its own
+requirements say otherwise.
+
+### Session-cookie management key
+
+`/www/managetickets/*` no longer re-prompts for the management key on
+every page load. `KeyGate` now tries, in order: a session cookie from a
+previous unlock this browser session, then the existing ambient
+X-Admin-Key probe (reverse proxy / header extension), then the manual
+prompt — whose successful entry is saved to the cookie. It's a genuine
+*session* cookie (no Max-Age/Expires), cleared when the browser itself
+closes, not just the tab. A "Forget key" control in the nav bar clears it
+sooner. Necessarily JS-readable (not HttpOnly), since it's set from
+client-side code with no server round trip in the "remember" step — an
+accepted trade-off for an internal console.
+
+### Status column no longer wraps
+
+Fixed at the badge level (`white-space: nowrap` on `.status-badge`) and
+reinforced with a dedicated `col-status` class on the queue table's
+header and cells.
+
+### Notification stubs
+
+`app/routes/tickets.py` now calls a `_notify()` hook on ticket creation,
+staff status updates, and reporter messages — a stub, not a real
+integration: unless `NOTIFY_WEBHOOK_URL` (or `notifications.webhookUrl`
+in config) is set, it's a complete no-op that costs nothing on the hot
+path. When configured, it POSTs exactly what a real notification would
+need: the event type, the `/www/view.html?id=` tracking link, and the
+latest status/message/timestamp. Delivery is best-effort with a short
+timeout — a slow or broken notification target can never fail the
+ticket operation that triggered it.
+
+### End-user messages via `/www/view.html?id=`
+
+Reporters can now add information to their own ticket from the public
+tracking page — same message-collection UX as the staff status page, but
+scoped to a note, not a status change: `POST /tickets/<uuid>/reporter-
+message` (public, rate-limited, no admin key) records an entry with
+`author: "reporter"` and `status: null` in the same `ticket_status_
+updates` history table staff updates already use — migration
+`0003_ticket_updates_author.sql` adds the `author` column and makes
+`status` nullable for exactly this case. After submitting, the page
+returns to its normal read-only view showing the new message inline.
+
+Reporter-authored entries render with a distinct "Reporter note" tag
+instead of a status badge (since they're not a lifecycle transition), on
+all three surfaces that show ticket history: the public tracking page,
+the staff view page, and — newly — the staff status page, which didn't
+show any history before this change and now displays it read-only above
+the status-update form.

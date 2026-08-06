@@ -48,6 +48,12 @@ body {
 }
 .manage-nav a:hover { color: var(--text); }
 .manage-nav a[aria-current="page"] { color: var(--text); border-bottom-color: var(--violet); }
+.manage-nav .nav-forget {
+  margin-left: auto; align-self: center; background: none; border: 0;
+  color: var(--muted); font: 500 12px "Inter", sans-serif; cursor: pointer;
+  padding: 6px 8px; text-decoration: underline; text-underline-offset: 2px;
+}
+.manage-nav .nav-forget:hover { color: var(--text); }
 
 .eyebrow { font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: .28em; color: var(--violet); text-transform: uppercase; margin-bottom: 14px; }
 h1 { font-family: "Space Grotesk", sans-serif; font-weight: 700; font-size: clamp(26px, 4vw, 34px); line-height: 1.14; letter-spacing: -.01em; margin-bottom: 10px; }
@@ -65,6 +71,8 @@ input:focus-visible, select:focus-visible {
   outline: none; border-color: var(--violet); box-shadow: 0 0 0 3px rgba(124,92,255,.22);
 }
 select { appearance: none; }
+
+.actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 
 .btn {
   font: 600 15px "Space Grotesk", sans-serif; letter-spacing: .02em; color: #fff;
@@ -93,6 +101,7 @@ select { appearance: none; }
 .gate .note { font-size: 12px; color: #565B70; margin-top: 4px; }
 
 /* -- table + badges ---------------------------------------------- */
+.table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -4px; }
 .tickets-table { width: 100%; border-collapse: collapse; font-size: 14px; }
 .tickets-table th {
   text-align: left; font: 600 11px "Space Grotesk", sans-serif; letter-spacing: .12em;
@@ -102,6 +111,10 @@ select { appearance: none; }
 .tickets-table td { padding: 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
 .tickets-table tr:hover td { background: var(--panel); }
 .tickets-table .mono { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--muted); }
+/* Status column: badge text ("in progress" etc.) must not wrap — the
+   badge itself already sets white-space:nowrap, this also keeps the
+   header label and cell from wrapping the column narrower than it. */
+.tickets-table th.col-status, .tickets-table td.col-status { white-space: nowrap; }
 .tickets-table .subject { font-weight: 500; }
 .tickets-table .who { color: var(--muted); font-size: 13px; }
 
@@ -114,12 +127,23 @@ select { appearance: none; }
   display: inline-block; font: 500 11px "Space Grotesk", sans-serif;
   letter-spacing: .08em; text-transform: uppercase; padding: 3px 9px;
   border-radius: 999px; border: 1px solid var(--line); color: var(--muted);
+  white-space: nowrap;
 }
 .status-badge[data-s="open"]        { color: var(--bolt); border-color: rgba(255,216,77,.4); }
 .status-badge[data-s="acknowledged"]{ color: #9BB0FF; border-color: rgba(155,176,255,.35); }
 .status-badge[data-s="in_progress"] { color: var(--violet); border-color: rgba(124,92,255,.45); }
 .status-badge[data-s="resolved"]    { color: #59D499; border-color: rgba(89,212,153,.4); }
 .status-badge[data-s="closed"]      { color: var(--muted); }
+
+/* Reporter-authored history entries (a note, not a status transition —
+   see UpdatesList) get this in place of a StatusBadge. */
+.author-tag {
+  display: inline-block; font: 600 11px "Space Grotesk", sans-serif;
+  letter-spacing: .06em; text-transform: uppercase; padding: 3px 9px;
+  border-radius: 999px; white-space: nowrap;
+  background: rgba(124,92,255,.16); color: var(--violet);
+  border: 1px solid rgba(124,92,255,.35);
+}
 
 /* -- detail card + states ---------------------------------------- */
 .detail {
@@ -140,6 +164,15 @@ select { appearance: none; }
 }
 .empty { color: var(--muted); padding: 28px 0; text-align: center; }
 .filters { display: grid; gap: 14px; grid-template-columns: 1fr 1fr auto; align-items: end; margin-bottom: 22px; }
+
+/* Single input + button lookup forms (ticket-ID search on view.html,
+   managetickets/view, and managetickets/status). A dedicated class
+   rather than className="filters" + an inline gridTemplateColumns
+   override — inline styles always beat a later media query regardless
+   of viewport, which was silently defeating responsiveness on exactly
+   these three forms. */
+.filters-single { display: grid; gap: 14px; grid-template-columns: 1fr auto; align-items: end; margin-bottom: 22px; }
+@media (max-width: 480px) { .filters-single { grid-template-columns: 1fr; } }
 @media (max-width: 640px) { .filters { grid-template-columns: 1fr; } }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
@@ -194,4 +227,18 @@ select { appearance: none; }
 }
 @media (max-width: 640px) {
   .filters-queue { grid-template-columns: 1fr; }
+}
+
+/* -- mobile responsiveness ----------------------------------------- */
+@media (max-width: 640px) {
+  #root { padding: 28px 16px 64px; }
+  .manage-nav { flex-wrap: wrap; row-gap: 8px; }
+  .manage-nav .nav-forget { margin-left: 0; flex-basis: 100%; text-align: left; }
+  .gate { padding: 20px; }
+  .btn, .btn-quiet, .submit { width: 100%; text-align: center; }
+  .actions { flex-wrap: wrap; }
+  input, select, textarea, .btn, .btn-quiet {
+    font-size: 16px;   /* prevents iOS Safari's auto-zoom on focus */
+  }
+  .row-actions button { width: 32px; height: 32px; }  /* larger touch target */
 }

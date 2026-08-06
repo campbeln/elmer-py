@@ -140,7 +140,7 @@ def test_ELMER_SEC_005_rate_limiting():
     try:
         statuses = [client.post("/tickets/manage/verify",
                                 headers={"X-Admin-Key": "guess-%d" % i}).status_code
-                   for i in range(20)]
+                   for i in range(45)]
         assert 429 in statuses, "manage/verify must eventually rate-limit"
 
         body = {"name": "A", "email": "a@b.co", "subject": "s",
