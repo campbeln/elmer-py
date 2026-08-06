@@ -177,6 +177,34 @@ function StatusBadge({ status }) {
   return <span className="status-badge" data-s={status}>{String(status || "").replace("_", " ")}</span>;
 }
 
+/* Small inline-SVG icons for row actions (view / edit) — no icon library
+ * dependency, consistent with the rest of this zero-build page set.
+ * `title` renders a native tooltip; callers still supply aria-label on
+ * the wrapping button for screen readers. */
+function IconEye({ title = "View", ...rest }) {
+  return (
+    <svg viewBox="0 0 20 20" width="15" height="15" fill="none"
+         stroke="currentColor" strokeWidth="1.6" aria-hidden="true" {...rest}>
+      <title>{title}</title>
+      <path d="M1.5 10S4.7 4.2 10 4.2 18.5 10 18.5 10 15.3 15.8 10 15.8 1.5 10 1.5 10Z"
+            strokeLinejoin="round" strokeLinecap="round" />
+      <circle cx="10" cy="10" r="2.4" />
+    </svg>
+  );
+}
+
+function IconPencil({ title = "Edit", ...rest }) {
+  return (
+    <svg viewBox="0 0 20 20" width="15" height="15" fill="none"
+         stroke="currentColor" strokeWidth="1.6" aria-hidden="true" {...rest}>
+      <title>{title}</title>
+      <path d="M13.3 3.3a1.5 1.5 0 0 1 2.1 0l1.3 1.3a1.5 1.5 0 0 1 0 2.1L6 17.4l-4 .6.6-4 10.7-10.7Z"
+            strokeLinejoin="round" strokeLinecap="round" />
+      <path d="M11.6 5 15 8.4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function fmtDate(iso) {
   if (!iso) return "";
   try { return new Date(iso).toLocaleString(); } catch (e) { return iso; }
@@ -208,6 +236,6 @@ function UpdatesList({ updates }) {
 
 window.Manage = {
   useBranding, Brand, Nav, KeyGate, api, SevBadge, StatusBadge, SEV_COLORS,
-  fmtDate, UpdatesList,
+  fmtDate, UpdatesList, IconEye, IconPencil,
 };
 })();

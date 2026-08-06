@@ -398,6 +398,17 @@ def apply(elmer, router, base_router=None):
                 )
             filters["status"] = "eq." + status
 
+        # Company/email are substring, case-insensitive matches (PostgREST's
+        # ilike with wildcards either side) rather than exact — e.g.
+        # email=@gmail.com should match every @gmail.com address.
+        company = elmer.type.str.mk(qs.get("company")).strip()
+        if company:
+            filters["company"] = "ilike.*" + company + "*"
+
+        email = elmer.type.str.mk(qs.get("email")).strip()
+        if email:
+            filters["email"] = "ilike.*" + email + "*"
+
         limit = min(max(elmer.type.int.mk(qs.get("limit"), 50), 1), 200)
         offset = max(elmer.type.int.mk(qs.get("offset"), 0), 0)
 

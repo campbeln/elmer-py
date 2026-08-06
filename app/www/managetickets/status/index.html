@@ -34,7 +34,6 @@ function StatusUpdate({ adminKey }) {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
-  const [saved, setSaved] = useState(null);
 
   async function loadCurrent(id) {
     if (!id || !id.trim()) { setCurrent(null); return; }
@@ -53,19 +52,19 @@ function StatusUpdate({ adminKey }) {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    setSaved(null);
     const res = await api(
       "/tickets/" + encodeURIComponent(ticketId.trim()) + "/status",
       adminKey,
       { method: "POST", body: JSON.stringify({ status, message }) }
     );
     if (res.ok && res.data && res.data.ticket) {
-      setSaved(res.data.ticket);
-      setCurrent(res.data.ticket);
-      setMessage("");
-    } else {
-      setError((res.data && res.data.error) || "The status could not be updated.");
+      // Hand off to the read-only view page, which shows the full history
+      // — including the update just made — rather than staying here.
+      window.location.href =
+        "/www/managetickets/view/?id=" + encodeURIComponent(ticketId.trim());
+      return;
     }
+    setError((res.data && res.data.error) || "The status could not be updated.");
     setBusy(false);
   }
 
@@ -75,7 +74,7 @@ function StatusUpdate({ adminKey }) {
         <label>
           <span className="tag">Ticket ID</span>
           <input value={ticketId}
-                 onChange={(e) => { setTicketId(e.target.value); setSaved(null); }}
+                 onChange={(e) => setTicketId(e.target.value)}
                  onBlur={() => loadCurrent(ticketId)}
                  placeholder="00000000-0000-0000-0000-000000000000" />
         </label>
@@ -106,11 +105,6 @@ function StatusUpdate({ adminKey }) {
         </label>
 
         {error && <div className="error" role="alert">{error}</div>}
-        {saved && (
-          <div className="success-line" role="status">
-            Status updated — ticket is now <strong>{saved.status.replace("_", " ")}</strong>.
-          </div>
-        )}
 
         <div>
           <button className="btn" type="submit" disabled={busy || !ticketId.trim()}>

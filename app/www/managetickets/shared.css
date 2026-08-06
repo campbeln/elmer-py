@@ -163,3 +163,35 @@ select { appearance: none; }
 .update-entry .when { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--muted); }
 .update-entry .msg { color: var(--text); font-size: 14px; white-space: pre-wrap; }
 .update-entry .no-msg { color: #565B70; font-size: 13px; font-style: italic; }
+
+/* -- row action icons (view / edit under Ticket ID) --------------- */
+.row-actions { display: flex; gap: 6px; margin-top: 6px; }
+.row-actions button {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 24px; height: 24px; padding: 0; border-radius: 6px;
+  background: none; border: 1px solid var(--line); color: var(--muted);
+  cursor: pointer; transition: border-color .15s, color .15s;
+}
+.row-actions button:hover { border-color: var(--violet); color: var(--violet); }
+.row-actions button:focus-visible { outline: 2px solid var(--violet); outline-offset: 1px; }
+
+/* -- sortable column headers --------------------------------------- */
+.tickets-table th.sortable {
+  cursor: pointer; user-select: none; white-space: nowrap;
+}
+.tickets-table th.sortable:hover { color: var(--text); }
+.tickets-table th .sort-caret {
+  display: inline-block; margin-left: 5px; font-size: 9px; color: var(--violet);
+}
+
+/* -- wider filter row (severity/status/email/company/apply) -------- */
+.filters-queue {
+  display: grid; gap: 14px; align-items: end; margin-bottom: 22px;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+}
+@media (max-width: 900px) {
+  .filters-queue { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 640px) {
+  .filters-queue { grid-template-columns: 1fr; }
+}

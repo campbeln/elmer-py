@@ -197,5 +197,34 @@ def test_public_endpoint_needs_no_key_and_limits_fields():
         use_table(prev_updates, "ticket_status_updates")
 
 
+def test_list_filters_by_email_and_company_substring():
+    _, _, client = get_app()
+    prev_tickets = use_table(FakeTable())
+    try:
+        make_ticket(client, email="ada@analyticalengines.com",
+                   company="Analytical Engines")
+        make_ticket(client, email="bob@gmail.com", company="")
+        make_ticket(client, email="carol@gmail.com", company="Acme Corp")
+
+        by_email = _json(client.get("/tickets/?email=@gmail.com",
+                                    headers=GOOD_HEADERS))
+        assert by_email["count"] == 2
+        assert all("@gmail.com" in t["email"] for t in by_email["tickets"])
+
+        # Case-insensitive, partial match.
+        by_company = _json(client.get("/tickets/?company=acme",
+                                      headers=GOOD_HEADERS))
+        assert by_company["count"] == 1
+        assert by_company["tickets"][0]["company"] == "Acme Corp"
+
+        # Combined with an existing exact filter.
+        combined = _json(client.get(
+            "/tickets/?priority=P3&email=analyticalengines",
+            headers=GOOD_HEADERS))
+        assert combined["count"] == 1
+    finally:
+        use_table(prev_tickets)
+
+
 if __name__ == "__main__":
     raise SystemExit(run_module(globals()))

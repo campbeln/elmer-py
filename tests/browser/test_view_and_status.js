@@ -23,9 +23,11 @@ const { openPage, unlock, waitFor, setValue, sleep, api } = require("./_shared")
     if (!ok) process.exit(1);
   }
 
-  // -- status page --
+  // -- status page: submitting now navigates straight to the view page
+  //    (rather than showing an inline success line), landing on a page
+  //    that already contains the just-made update. --
   {
-    const { dom, errors } = await openPage(
+    const { dom, errors, jsdomErrors } = await openPage(
       "/www/managetickets/status/?id=" + ticket.id);
     const w = dom.window, doc = w.document;
     await unlock(w);
@@ -37,13 +39,19 @@ const { openPage, unlock, waitFor, setValue, sleep, api } = require("./_shared")
     await sleep(120);
     [...doc.querySelectorAll("button")]
       .find((b) => /update status/i.test(b.textContent)).click();
-    await waitFor(() => doc.querySelector(".success-line"), "success line");
+    // jsdom can't perform the navigation; the attempt surfaces as a
+    // "Not implemented: navigation" jsdomError — that's the signal.
+    await waitFor(() => jsdomErrors.some((m) => /navigation/i.test(m)),
+      "navigation to view page after update");
+    console.log("status page navigates on success: true");
+    console.log("no leftover success-line:", !doc.querySelector(".success-line"));
     console.log("status page:", errors.length === 0 ? "PASS" : "FAIL");
     dom.window.close();
     if (errors.length) process.exit(1);
   }
 
-  // -- the message now shows in the view page's history --
+  // -- separately: load the view page directly and confirm the message
+  //    the status page just saved is present in its history --
   {
     const { dom, errors } = await openPage(
       "/www/managetickets/view/?id=" + ticket.id);

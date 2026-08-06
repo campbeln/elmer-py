@@ -20,16 +20,44 @@
 
 <script type="text/babel" data-presets="react">
 (() => {
-const { useEffect, useState } = React;
-const { useBranding, Brand, Nav, KeyGate, api, SevBadge, StatusBadge, fmtDate } = window.Manage;
+const { useEffect, useMemo, useState } = React;
+const { useBranding, Brand, Nav, KeyGate, api, SevBadge, StatusBadge, fmtDate,
+        IconEye, IconPencil } = window.Manage;
 
 const PRIORITY_OPTIONS = ["", "P1", "P2", "P3", "P4"];
 const STATUS_OPTIONS = ["", "open", "acknowledged", "in_progress", "resolved", "closed"];
 
+/* Sort key -> value extractor. Priority/status sort correctly as plain
+ * strings ("P1" < "P2" < ... lexically matches severity order). Email and
+ * company compare case-insensitively; company falls back to "" so blanks
+ * group predictably rather than scattering by locale rules. */
+const SORT_GETTERS = {
+  priority: (t) => t.priority || "",
+  status: (t) => t.status || "",
+  email: (t) => (t.email || "").toLowerCase(),
+  company: (t) => (t.company || "").toLowerCase(),
+  created_at: (t) => t.created_at || "",
+  updated_at: (t) => t.updated_at || "",
+};
+
+function SortableTh({ label, sortKey, sort, onSort }) {
+  const active = sort.key === sortKey;
+  return (
+    <th className="sortable" onClick={() => onSort(sortKey)}
+        aria-sort={active ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}>
+      {label}
+      <span className="sort-caret">{active ? (sort.dir === "asc" ? "▲" : "▼") : ""}</span>
+    </th>
+  );
+}
+
 function Queue({ adminKey }) {
   const [priority, setPriority] = useState("");
   const [status, setStatus] = useState("");
+  const [email, setEmail] = useState("");
+  const [company, setCompany] = useState("");
   const [tickets, setTickets] = useState(null);
+  const [sort, setSort] = useState({ key: null, dir: "asc" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -39,6 +67,8 @@ function Queue({ adminKey }) {
     const params = new URLSearchParams();
     if (priority) params.set("priority", priority);
     if (status) params.set("status", status);
+    if (email.trim()) params.set("email", email.trim());
+    if (company.trim()) params.set("company", company.trim());
     params.set("limit", "100");
     const res = await api("/tickets/?" + params.toString(), adminKey);
     if (res.ok && res.data) {
@@ -51,9 +81,33 @@ function Queue({ adminKey }) {
 
   useEffect(() => { load(); }, []);   // initial load once unlocked
 
+  function toggleSort(key) {
+    setSort((prev) => prev.key === key
+      ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
+      : { key, dir: "asc" });
+  }
+
+  // Sorting is client-side over the already-fetched page: instant, and
+  // independent of which server-side filters are active.
+  const sortedTickets = useMemo(() => {
+    if (!tickets || !sort.key) return tickets;
+    const get = SORT_GETTERS[sort.key];
+    return [...tickets].sort((a, b) => {
+      const av = get(a), bv = get(b);
+      if (av < bv) return sort.dir === "asc" ? -1 : 1;
+      if (av > bv) return sort.dir === "asc" ? 1 : -1;
+      return 0;
+    });
+  }, [tickets, sort]);
+
+  function goto(url, e) {
+    if (e) e.stopPropagation();
+    window.location.href = url;
+  }
+
   return (
     <React.Fragment>
-      <div className="filters">
+      <div className="filters-queue">
         <label>
           <span className="tag">Severity</span>
           <select value={priority} onChange={(e) => setPriority(e.target.value)}>
@@ -66,6 +120,16 @@ function Queue({ adminKey }) {
             {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s ? s.replace("_", " ") : "All"}</option>)}
           </select>
         </label>
+        <label>
+          <span className="tag">Email contains</span>
+          <input value={email} onChange={(e) => setEmail(e.target.value)}
+                 placeholder="@gmail.com" />
+        </label>
+        <label>
+          <span className="tag">Company contains</span>
+          <input value={company} onChange={(e) => setCompany(e.target.value)}
+                 placeholder="Acme" />
+        </label>
         <button className="btn" onClick={load} disabled={busy}>
           {busy ? "Loading…" : "Apply filters"}<span className="arrow">→</span>
         </button>
@@ -77,41 +141,57 @@ function Queue({ adminKey }) {
         <p className="empty">No tickets match these filters.</p>
       )}
 
-      {tickets && tickets.length > 0 && (
+      {sortedTickets && sortedTickets.length > 0 && (
         <table className="tickets-table">
           <thead>
             <tr>
-              <th>Sev</th><th>Subject</th><th>Status</th><th>Opened</th><th>Ticket ID</th>
+              <SortableTh label="Sev" sortKey="priority" sort={sort} onSort={toggleSort} />
+              <th>Subject</th>
+              <SortableTh label="Status" sortKey="status" sort={sort} onSort={toggleSort} />
+              <SortableTh label="Email" sortKey="email" sort={sort} onSort={toggleSort} />
+              <SortableTh label="Company" sortKey="company" sort={sort} onSort={toggleSort} />
+              <SortableTh label="Opened" sortKey="created_at" sort={sort} onSort={toggleSort} />
+              <SortableTh label="Updated" sortKey="updated_at" sort={sort} onSort={toggleSort} />
+              <th>Ticket ID</th>
             </tr>
           </thead>
           <tbody>
-            {tickets.map((t) => (
-              <tr key={t.id} className="clickable" tabIndex={0}
-                  role="link"
-                  aria-label={"Open ticket " + t.subject}
-                  onClick={() => {
-                    window.location.href =
-                      "/www/managetickets/view/?id=" + t.id;
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      window.location.href =
-                        "/www/managetickets/view/?id=" + t.id;
-                    }
-                  }}>
-                <td><SevBadge code={t.priority} /></td>
-                <td>
-                  <div className="subject">{t.subject}</div>
-                  <div className="who">{t.name}{t.company ? " · " + t.company : ""} · {t.email}</div>
-                </td>
-                <td><StatusBadge status={t.status} /></td>
-                <td className="mono">{fmtDate(t.created_at)}</td>
-                <td className="mono">
-                  <a href={"/www/managetickets/view/?id=" + t.id}
-                     style={{ color: "var(--violet)" }}>{t.id.slice(0, 8)}…</a>
-                </td>
-              </tr>
-            ))}
+            {sortedTickets.map((t) => {
+              const viewUrl = "/www/managetickets/view/?id=" + t.id;
+              const statusUrl = "/www/managetickets/status/?id=" + t.id;
+              return (
+                <tr key={t.id} className="clickable" tabIndex={0}
+                    role="link"
+                    aria-label={"Open ticket " + t.subject}
+                    onClick={() => goto(viewUrl)}
+                    onKeyDown={(e) => { if (e.key === "Enter") goto(viewUrl); }}>
+                  <td><SevBadge code={t.priority} /></td>
+                  <td>
+                    <div className="subject">{t.subject}</div>
+                    <div className="who">{t.name}</div>
+                  </td>
+                  <td><StatusBadge status={t.status} /></td>
+                  <td className="who">{t.email}</td>
+                  <td className="who">{t.company || "—"}</td>
+                  <td className="mono">{fmtDate(t.created_at)}</td>
+                  <td className="mono">{fmtDate(t.updated_at)}</td>
+                  <td className="mono">
+                    <a href={viewUrl} onClick={(e) => e.stopPropagation()}
+                       style={{ color: "var(--violet)" }}>{t.id.slice(0, 8)}…</a>
+                    <div className="row-actions">
+                      <button type="button" aria-label={"View ticket " + t.subject}
+                              onClick={(e) => goto(viewUrl, e)}>
+                        <IconEye />
+                      </button>
+                      <button type="button" aria-label={"Edit status for " + t.subject}
+                              onClick={(e) => goto(statusUrl, e)}>
+                        <IconPencil />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       )}
@@ -128,7 +208,10 @@ function Page() {
       <Nav current="queue" />
       <p className="eyebrow">Severity triage · queue</p>
       <h1>Ticket queue</h1>
-      <p className="lede">Every open report, newest first. Filter by severity or lifecycle status.</p>
+      <p className="lede">
+        Every report, newest first. Filter by severity, status, email, or
+        company, and click any column header to sort.
+      </p>
       <KeyGate>{(adminKey) => <Queue adminKey={adminKey} />}</KeyGate>
     </React.Fragment>
   );

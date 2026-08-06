@@ -60,18 +60,29 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _filters(self):
+        """Return {column: (op, value)} for eq./ilike. filters in the query."""
         qs = parse_qs(urlsplit(self.path).query)
-        return {k: v[0].split("eq.", 1)[-1] for k, v in qs.items()
-                if k not in ("select", "order", "limit", "offset")
-                and v[0].startswith("eq.")}
+        out = {}
+        for key, values in qs.items():
+            if key in ("select", "order", "limit", "offset"):
+                continue
+            raw = values[0]
+            if raw.startswith("eq."):
+                out[key] = ("eq", raw.split("eq.", 1)[-1])
+            elif raw.startswith("ilike."):
+                out[key] = ("ilike", raw.split("ilike.", 1)[-1].strip("*").lower())
+        return out
 
     def do_GET(self):
         rows = self._table()
         if rows is None:
             return self._send(404, {"message": "relation does not exist"})
         out = rows
-        for key, want in self._filters().items():
-            out = [r for r in out if str(r.get(key)) == want]
+        for key, (op, want) in self._filters().items():
+            if op == "eq":
+                out = [r for r in out if str(r.get(key)) == want]
+            else:
+                out = [r for r in out if want in str(r.get(key) or "").lower()]
         # newest-inserted first ~ created_at.desc
         self._send(200, list(reversed(out)))
 
@@ -90,7 +101,7 @@ class Handler(BaseHTTPRequestHandler):
         rows = self._table()
         if rows is None:
             return self._send(404, {"message": "relation does not exist"})
-        want = self._filters().get("id", "")
+        want = self._filters().get("id", ("eq", ""))[1]
         length = int(self.headers.get("Content-Length", 0))
         patch = json.loads(self.rfile.read(length) or b"{}")
         hit = [r for r in rows if r.get("id") == want]

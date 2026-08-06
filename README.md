@@ -460,3 +460,29 @@ management console are click-through to the view page. After a successful
 submission, `/www/tickets.html` shows the reporter their absolute tracking
 URL with a copy button (clipboard API where available, `execCommand`
 fallback for non-secure contexts).
+
+---
+
+## Queue, sorting, filtering, and status navigation
+
+The management queue (`/www/managetickets`) now shows Email, Company, and
+Updated Date columns alongside the original Severity/Subject/Status/Opened/
+Ticket ID. Severity, Status, Email, Company, Opened, and Updated Date
+headers are clickable and toggle ascending/descending — sorting happens
+client-side over the already-fetched page, so it's instant and independent
+of which server-side filters are active. Each row carries small view/edit
+icons under its Ticket ID (view → the read-only detail page, edit → the
+status page); the icons stop click propagation so they don't also trigger
+the row's own navigate-to-view behavior.
+
+Two new filters, **Email contains** and **Company contains**, do
+case-insensitive substring matching — searching `@gmail.com` returns every
+matching address. These push down to Supabase via PostgREST's `ilike`
+operator (`GET /tickets?email=...&company=...`) rather than filtering
+client-side, so they scale the same way the existing exact-match
+priority/status filters do.
+
+Submitting a status update on `/www/managetickets/status/?id=` now
+navigates straight to `/www/managetickets/view/?id=` on success, landing
+on a page that already shows the just-made update in its history — rather
+than staying on the form with an inline confirmation.

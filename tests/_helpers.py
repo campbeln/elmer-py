@@ -69,8 +69,14 @@ class FakeTable:
         for key, value in (filters or {}).items():
             if key == "select":
                 continue
-            want = value.split("eq.", 1)[-1]
-            out = [r for r in out if str(r.get(key)) == want]
+            if value.startswith("ilike."):
+                # PostgREST ilike pattern: "ilike.*needle*" -> substring,
+                # case-insensitive contains.
+                needle = value.split("ilike.", 1)[-1].strip("*").lower()
+                out = [r for r in out if needle in str(r.get(key) or "").lower()]
+            else:
+                want = value.split("eq.", 1)[-1]
+                out = [r for r in out if str(r.get(key)) == want]
         out = list(reversed(out))
         if offset:
             out = out[offset:]
