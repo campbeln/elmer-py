@@ -88,6 +88,14 @@ const { openPage, unlock, waitFor, setValue, sleep, api } = require("./_shared")
 
   // -- staff status page: same history now shown read-only there too --
   {
+    // KNOWN ISSUE — see tests/README.md "Known issues" for full context,
+    // suspected causes, and suggested next steps. Short version: this
+    // block occasionally didn't see fresh data on the first page load
+    // when run as part of the full suite (never in isolation). Manual
+    // DOM-trace investigation strongly suggests this is a test-
+    // environment artifact, not an app bug, but that isn't confirmed —
+    // don't just delete this retry without reading that note first.
+    //
     // A bounded retry (fresh page load each attempt) rather than just a
     // longer single wait: under the heavy concurrent jsdom/Babel load
     // this suite creates, an occasional single fetch can be slow or hit

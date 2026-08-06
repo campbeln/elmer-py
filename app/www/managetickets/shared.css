@@ -16,6 +16,7 @@
   --p2: #FF9F45;
   --p3: #F5C542;
   --p4: #8B93A8;
+  --reporter: #FF2ECC;
   --radius: 10px;
 }
 * { box-sizing: border-box; margin: 0; }
@@ -137,12 +138,17 @@ select { appearance: none; }
 
 /* Reporter-authored history entries (a note, not a status transition —
    see UpdatesList) get this in place of a StatusBadge. */
+/* Deliberately NOT styled like a status badge (bordered outline, muted
+   fill) — a reporter note is a different KIND of thing, not another
+   status, and it should read that way at a glance in a timeline that's
+   otherwise all status badges. Solid fill + glow, in a hue (hot magenta)
+   no status badge or severity color uses anywhere else in the app. */
 .author-tag {
-  display: inline-block; font: 600 11px "Space Grotesk", sans-serif;
-  letter-spacing: .06em; text-transform: uppercase; padding: 3px 9px;
+  display: inline-block; font: 700 11px "Space Grotesk", sans-serif;
+  letter-spacing: .06em; text-transform: uppercase; padding: 3px 10px;
   border-radius: 999px; white-space: nowrap;
-  background: rgba(124,92,255,.16); color: var(--violet);
-  border: 1px solid rgba(124,92,255,.35);
+  background: var(--reporter); color: #1a0313;
+  box-shadow: 0 0 14px -2px rgba(255,46,204,.65);
 }
 
 /* -- detail card + states ---------------------------------------- */

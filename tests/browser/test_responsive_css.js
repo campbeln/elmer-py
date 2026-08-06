@@ -59,6 +59,26 @@ const read = (rel) => fs.readFileSync(path.join(ROOT, rel), "utf8");
     /<div className="table-scroll">/.test(queueHtml));
   check("shared.css defines .table-scroll", /\.table-scroll\s*{/.test(sharedCss));
 
+  // -- reporter note must be a genuinely distinct, bright color, not
+  //    reused from any status badge (previously shared the same violet
+  //    as the "in_progress" status, undermining "stands out") --
+  const reporterColorMatch = sharedCss.match(/--reporter:\s*(#[0-9a-fA-F]{3,6})/);
+  check("shared.css defines a dedicated --reporter color variable", !!reporterColorMatch);
+  if (reporterColorMatch) {
+    const reporterColor = reporterColorMatch[1].toLowerCase();
+    const statusColors = [...sharedCss.matchAll(
+      /\.status-badge\[data-s="[a-z_]+"\]\s*{[^}]*color:\s*(?:var\(([a-z0-9-]+)\)|(#[0-9a-fA-F]{3,6}))/g,
+    )].map((m) => {
+      if (m[2]) return m[2].toLowerCase();
+      const varMatch = sharedCss.match(new RegExp(m[1] + ":\\s*(#[0-9a-fA-F]{3,6})"));
+      return varMatch ? varMatch[1].toLowerCase() : null;
+    }).filter(Boolean);
+    check("--reporter color is not reused by any status badge",
+      !statusColors.includes(reporterColor));
+    check("author-tag actually uses the --reporter variable",
+      /\.author-tag\s*{[^}]*var\(--reporter\)/.test(sharedCss));
+  }
+
   console.log("RESULT:", ok ? "PASS" : "FAIL");
   process.exit(ok ? 0 : 1);
 })();
