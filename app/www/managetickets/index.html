@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#000000" />
+<title>Ticket queue — Manage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/www/managetickets/shared.css" />
+</head>
+<body>
+<div id="root"></div>
+
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script type="text/babel" data-presets="react" src="/www/managetickets/shared.jsx"></script>
+
+<script type="text/babel" data-presets="react">
+const { useEffect, useState } = React;
+const { useBranding, Brand, Nav, KeyGate, api, SevBadge, StatusBadge, fmtDate } = window.Manage;
+
+const PRIORITY_OPTIONS = ["", "P1", "P2", "P3", "P4"];
+const STATUS_OPTIONS = ["", "open", "acknowledged", "in_progress", "resolved", "closed"];
+
+function Queue({ adminKey }) {
+  const [priority, setPriority] = useState("");
+  const [status, setStatus] = useState("");
+  const [tickets, setTickets] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  async function load() {
+    setBusy(true);
+    setError(null);
+    const params = new URLSearchParams();
+    if (priority) params.set("priority", priority);
+    if (status) params.set("status", status);
+    params.set("limit", "100");
+    const res = await api("/tickets/?" + params.toString(), adminKey);
+    if (res.ok && res.data) {
+      setTickets(res.data.tickets || []);
+    } else {
+      setError((res.data && res.data.error) || "The queue could not be loaded.");
+    }
+    setBusy(false);
+  }
+
+  useEffect(() => { load(); }, []);   // initial load once unlocked
+
+  return (
+    <React.Fragment>
+      <div className="filters">
+        <label>
+          <span className="tag">Severity</span>
+          <select value={priority} onChange={(e) => setPriority(e.target.value)}>
+            {PRIORITY_OPTIONS.map((p) => <option key={p} value={p}>{p || "All"}</option>)}
+          </select>
+        </label>
+        <label>
+          <span className="tag">Status</span>
+          <select value={status} onChange={(e) => setStatus(e.target.value)}>
+            {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s ? s.replace("_", " ") : "All"}</option>)}
+          </select>
+        </label>
+        <button className="btn" onClick={load} disabled={busy}>
+          {busy ? "Loading…" : "Apply filters"}<span className="arrow">→</span>
+        </button>
+      </div>
+
+      {error && <div className="error" role="alert">{error}</div>}
+
+      {tickets && tickets.length === 0 && !error && (
+        <p className="empty">No tickets match these filters.</p>
+      )}
+
+      {tickets && tickets.length > 0 && (
+        <table className="tickets-table">
+          <thead>
+            <tr>
+              <th>Sev</th><th>Subject</th><th>Status</th><th>Opened</th><th>Ticket ID</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tickets.map((t) => (
+              <tr key={t.id}>
+                <td><SevBadge code={t.priority} /></td>
+                <td>
+                  <div className="subject">{t.subject}</div>
+                  <div className="who">{t.name}{t.company ? " · " + t.company : ""} · {t.email}</div>
+                </td>
+                <td><StatusBadge status={t.status} /></td>
+                <td className="mono">{fmtDate(t.created_at)}</td>
+                <td className="mono">
+                  <a href={"/www/managetickets/view/?id=" + t.id}
+                     style={{ color: "var(--violet)" }}>{t.id.slice(0, 8)}…</a>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </React.Fragment>
+  );
+}
+
+function Page() {
+  const branding = useBranding();
+  useEffect(() => { document.title = "Ticket queue — " + branding.name; }, [branding]);
+  return (
+    <React.Fragment>
+      <Brand branding={branding} page="Manage" />
+      <Nav current="queue" />
+      <p className="eyebrow">Severity triage · queue</p>
+      <h1>Ticket queue</h1>
+      <p className="lede">Every open report, newest first. Filter by severity or lifecycle status.</p>
+      <KeyGate>{(adminKey) => <Queue adminKey={adminKey} />}</KeyGate>
+    </React.Fragment>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<Page />);
+</script>
+</body>
+</html>

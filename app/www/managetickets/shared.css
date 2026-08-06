@@ -1,0 +1,145 @@
+/* Shared design system for the /www/managetickets pages.
+   Same tokens as tickets.html, plus management-specific pieces:
+   nav, key gate, ticket table, status badges. */
+
+:root {
+  --bg: #060609;
+  --panel: #0C0C12;
+  --panel-2: #101018;
+  --line: #1E1E2A;
+  --text: #EDEEF3;
+  --muted: #8B8FA3;
+  --violet: #7C5CFF;
+  --violet-deep: #5A3DF0;
+  --bolt: #FFD84D;
+  --p1: #FF4D5E;
+  --p2: #FF9F45;
+  --p3: #F5C542;
+  --p4: #8B93A8;
+  --radius: 10px;
+}
+* { box-sizing: border-box; margin: 0; }
+html { color-scheme: dark; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.6 "Inter", system-ui, -apple-system, sans-serif;
+  min-height: 100vh;
+  background-image:
+    radial-gradient(ellipse 60% 40% at 50% -10%, rgba(124,92,255,.14), transparent 70%),
+    linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+  background-size: auto, 44px 44px, 44px 44px;
+}
+#root { max-width: 960px; margin: 0 auto; padding: 48px 20px 96px; }
+
+/* -- header + nav ------------------------------------------------ */
+.brand { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.brand .bolt { color: var(--bolt); font-size: 20px; transform: skewX(-8deg); }
+.brand .word { font-family: "Space Grotesk", sans-serif; font-weight: 700; letter-spacing: .14em; font-size: 17px; }
+.brand .div { color: var(--line); }
+.brand .area { color: var(--muted); letter-spacing: .22em; font-size: 12px; text-transform: uppercase; }
+
+.manage-nav { display: flex; gap: 4px; margin: 0 0 40px; border-bottom: 1px solid var(--line); }
+.manage-nav a {
+  color: var(--muted); text-decoration: none; font: 500 13px "Space Grotesk", sans-serif;
+  letter-spacing: .06em; text-transform: uppercase; padding: 10px 14px;
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.manage-nav a:hover { color: var(--text); }
+.manage-nav a[aria-current="page"] { color: var(--text); border-bottom-color: var(--violet); }
+
+.eyebrow { font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: .28em; color: var(--violet); text-transform: uppercase; margin-bottom: 14px; }
+h1 { font-family: "Space Grotesk", sans-serif; font-weight: 700; font-size: clamp(26px, 4vw, 34px); line-height: 1.14; letter-spacing: -.01em; margin-bottom: 10px; }
+.lede { color: var(--muted); max-width: 60ch; margin-bottom: 34px; }
+
+/* -- inputs ------------------------------------------------------ */
+.tag { display: block; font-size: 12px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+input, select, textarea {
+  width: 100%; background: var(--panel); color: var(--text);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 12px 14px; font: inherit; transition: border-color .15s, box-shadow .15s;
+}
+input::placeholder { color: #565B70; }
+input:focus-visible, select:focus-visible {
+  outline: none; border-color: var(--violet); box-shadow: 0 0 0 3px rgba(124,92,255,.22);
+}
+select { appearance: none; }
+
+.btn {
+  font: 600 15px "Space Grotesk", sans-serif; letter-spacing: .02em; color: #fff;
+  background: linear-gradient(135deg, var(--violet), var(--violet-deep));
+  border: 0; border-radius: var(--radius); padding: 12px 24px; cursor: pointer;
+  box-shadow: 0 8px 28px -10px rgba(124,92,255,.65);
+  transition: transform .12s, box-shadow .12s, opacity .12s;
+}
+.btn:hover { transform: translateY(-1px); box-shadow: 0 12px 32px -10px rgba(124,92,255,.8); }
+.btn:disabled { opacity: .55; cursor: default; transform: none; }
+.btn .arrow { color: var(--bolt); margin-left: 8px; }
+.btn-quiet {
+  background: none; border: 1px solid var(--line); color: var(--text);
+  border-radius: var(--radius); padding: 10px 18px; font: 500 14px "Inter", sans-serif; cursor: pointer;
+}
+.btn-quiet:hover { border-color: var(--violet); }
+
+/* -- key gate ---------------------------------------------------- */
+.gate {
+  max-width: 460px; border: 1px solid var(--line); background: var(--panel);
+  border-radius: var(--radius); padding: 28px; margin-top: 12px;
+}
+.gate h2 { font-family: "Space Grotesk", sans-serif; font-size: 18px; margin-bottom: 6px; }
+.gate p { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+.gate form { display: grid; gap: 14px; }
+.gate .note { font-size: 12px; color: #565B70; margin-top: 4px; }
+
+/* -- table + badges ---------------------------------------------- */
+.tickets-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.tickets-table th {
+  text-align: left; font: 600 11px "Space Grotesk", sans-serif; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--muted); padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+.tickets-table td { padding: 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.tickets-table tr:hover td { background: var(--panel); }
+.tickets-table .mono { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--muted); }
+.tickets-table .subject { font-weight: 500; }
+.tickets-table .who { color: var(--muted); font-size: 13px; }
+
+.sev-badge {
+  display: inline-block; font: 500 12px "JetBrains Mono", monospace;
+  letter-spacing: .06em; padding: 2px 8px; border-radius: 6px;
+  border: 1px solid var(--sev); color: var(--sev);
+}
+.status-badge {
+  display: inline-block; font: 500 11px "Space Grotesk", sans-serif;
+  letter-spacing: .08em; text-transform: uppercase; padding: 3px 9px;
+  border-radius: 999px; border: 1px solid var(--line); color: var(--muted);
+}
+.status-badge[data-s="open"]        { color: var(--bolt); border-color: rgba(255,216,77,.4); }
+.status-badge[data-s="acknowledged"]{ color: #9BB0FF; border-color: rgba(155,176,255,.35); }
+.status-badge[data-s="in_progress"] { color: var(--violet); border-color: rgba(124,92,255,.45); }
+.status-badge[data-s="resolved"]    { color: #59D499; border-color: rgba(89,212,153,.4); }
+.status-badge[data-s="closed"]      { color: var(--muted); }
+
+/* -- detail card + states ---------------------------------------- */
+.detail {
+  border: 1px solid var(--line); background: var(--panel);
+  border-radius: var(--radius); padding: 24px; display: grid; gap: 16px;
+}
+.detail .field .tag { margin-bottom: 4px; }
+.detail .desc { white-space: pre-wrap; color: var(--text); }
+.detail .mono { font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--bolt); word-break: break-all; }
+
+.error {
+  border: 1px solid rgba(255,77,94,.4); background: rgba(255,77,94,.08);
+  border-radius: var(--radius); padding: 14px 16px; color: #FFB4BC; font-size: 14px;
+}
+.success-line {
+  border: 1px solid rgba(89,212,153,.4); background: rgba(89,212,153,.07);
+  border-radius: var(--radius); padding: 14px 16px; color: #A7EDC9; font-size: 14px;
+}
+.empty { color: var(--muted); padding: 28px 0; text-align: center; }
+.filters { display: grid; gap: 14px; grid-template-columns: 1fr 1fr auto; align-items: end; margin-bottom: 22px; }
+@media (max-width: 640px) { .filters { grid-template-columns: 1fr; } }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

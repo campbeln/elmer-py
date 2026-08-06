@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#000000" />
+<title>Update status — Manage</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/www/managetickets/shared.css" />
+</head>
+<body>
+<div id="root"></div>
+
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script type="text/babel" data-presets="react" src="/www/managetickets/shared.jsx"></script>
+
+<script type="text/babel" data-presets="react">
+const { useEffect, useState } = React;
+const { useBranding, Brand, Nav, KeyGate, api, SevBadge, StatusBadge } = window.Manage;
+
+const STATUSES = ["open", "acknowledged", "in_progress", "resolved", "closed"];
+
+function StatusUpdate({ adminKey }) {
+  // Deep-linkable from the queue/view pages: ?id=<uuid>
+  const initial = new URLSearchParams(window.location.search).get("id") || "";
+  const [ticketId, setTicketId] = useState(initial);
+  const [current, setCurrent] = useState(null);   // loaded ticket, for context
+  const [status, setStatus] = useState("acknowledged");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const [saved, setSaved] = useState(null);
+
+  async function loadCurrent(id) {
+    if (!id || !id.trim()) { setCurrent(null); return; }
+    const res = await api("/tickets/" + encodeURIComponent(id.trim()), adminKey);
+    if (res.ok && res.data && res.data.ticket) {
+      setCurrent(res.data.ticket);
+      setError(null);
+    } else {
+      setCurrent(null);
+    }
+  }
+
+  useEffect(() => { if (initial) loadCurrent(initial); }, []);
+
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    setSaved(null);
+    const res = await api(
+      "/tickets/" + encodeURIComponent(ticketId.trim()) + "/status",
+      adminKey,
+      { method: "POST", body: JSON.stringify({ status }) }
+    );
+    if (res.ok && res.data && res.data.ticket) {
+      setSaved(res.data.ticket);
+      setCurrent(res.data.ticket);
+    } else {
+      setError((res.data && res.data.error) || "The status could not be updated.");
+    }
+    setBusy(false);
+  }
+
+  return (
+    <React.Fragment>
+      <form onSubmit={submit} style={{ display: "grid", gap: 22, maxWidth: 560 }}>
+        <label>
+          <span className="tag">Ticket ID</span>
+          <input value={ticketId}
+                 onChange={(e) => { setTicketId(e.target.value); setSaved(null); }}
+                 onBlur={() => loadCurrent(ticketId)}
+                 placeholder="00000000-0000-0000-0000-000000000000" />
+        </label>
+
+        {current && (
+          <div className="detail" style={{ padding: 16 }}>
+            <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+              <SevBadge code={current.priority} />
+              <StatusBadge status={current.status} />
+              <span style={{ fontWeight: 500 }}>{current.subject}</span>
+            </div>
+          </div>
+        )}
+
+        <label>
+          <span className="tag">New status</span>
+          <select value={status} onChange={(e) => setStatus(e.target.value)}>
+            {STATUSES.map((s) => <option key={s} value={s}>{s.replace("_", " ")}</option>)}
+          </select>
+        </label>
+
+        {error && <div className="error" role="alert">{error}</div>}
+        {saved && (
+          <div className="success-line" role="status">
+            Status updated — ticket is now <strong>{saved.status.replace("_", " ")}</strong>.
+          </div>
+        )}
+
+        <div>
+          <button className="btn" type="submit" disabled={busy || !ticketId.trim()}>
+            {busy ? "Saving…" : "Update status"}<span className="arrow">→</span>
+          </button>
+        </div>
+      </form>
+    </React.Fragment>
+  );
+}
+
+function Page() {
+  const branding = useBranding();
+  useEffect(() => { document.title = "Update status — " + branding.name; }, [branding]);
+  return (
+    <React.Fragment>
+      <Brand branding={branding} page="Manage" />
+      <Nav current="status" />
+      <p className="eyebrow">Severity triage · lifecycle</p>
+      <h1>Update a ticket's status</h1>
+      <p className="lede">
+        Advance a ticket through its lifecycle: open, acknowledged, in progress,
+        resolved, closed.
+      </p>
+      <KeyGate>{(adminKey) => <StatusUpdate adminKey={adminKey} />}</KeyGate>
+    </React.Fragment>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<Page />);
+</script>
+</body>
+</html>
