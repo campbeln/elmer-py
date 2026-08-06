@@ -277,3 +277,40 @@ Each stored ticket records the request's `trace_id`, tying it into Elmer's
 no build step) served by Elmer itself, so its relative `/tickets` calls hit
 the same origin with no CORS work. It fetches the severity ladder from
 `/tickets/meta/priorities` at load, so form and API cannot drift apart.
+
+---
+
+## Deploying to Vercel
+
+Vercel's Python builder needs a WSGI app object exposed at module scope in
+`app.py`, `index.py`, or a path set via `tool.vercel.entrypoint` in
+`pyproject.toml` — it imports that module once per cold start and calls the
+app directly per request. It never calls `.run()` or binds a port.
+
+`_index.py` doesn't fit that shape on two counts: it's outside Vercel's
+default search list (leading underscore), and `build()`/`main()` start a
+*listening* dev server rather than exposing a bare callable. `api/index.py`
+bridges the two — it runs the same `_index.build()` bootstrap and route
+registration, then hands over `http_server.flask` as `app` without ever
+calling `.listen()`. `vercel.json` routes every path to that function.
+
+```bash
+npm i -g vercel      # if you don't have the CLI yet
+cd elmer-py
+vercel               # deploys; follow the prompts
+```
+
+Set `SUPABASE_URL` / `SUPABASE_SERVICE_KEY` (if using the ticket API) as
+[Environment Variables](https://vercel.com/docs/environment-variables) in
+the Vercel project settings — not in a committed config file.
+
+**Statelessness matters here.** Elmer's in-process features —
+`elmer.app.cache`, the `/elmer/proxy` child-API registry,
+`elmer.app.data.response` — live in memory for one process's lifetime.
+Serverless functions offer no such guarantee: concurrent invocations may
+land in different containers, and any container can be recycled between
+requests. Routes backed by an external store (like `/tickets`, on Supabase)
+work as expected; routes that depend on in-memory state persisting *across*
+requests — the proxy registry and cache being the main ones — are not a
+good fit for this deployment target without moving that state to Supabase,
+Redis, or similar.
