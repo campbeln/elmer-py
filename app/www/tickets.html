@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#000000" />
+<title>Support — Submit a ticket</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #060609;
+    --panel: #0C0C12;
+    --panel-2: #101018;
+    --line: #1E1E2A;
+    --text: #EDEEF3;
+    --muted: #8B8FA3;
+    --violet: #7C5CFF;
+    --violet-deep: #5A3DF0;
+    --bolt: #FFD84D;
+    --p1: #FF4D5E;
+    --p2: #FF9F45;
+    --p3: #F5C542;
+    --p4: #8B93A8;
+    --radius: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html { color-scheme: dark; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.6 "Inter", system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    /* faint engineering grid, in keeping with the runtime-security aesthetic */
+    background-image:
+      radial-gradient(ellipse 60% 40% at 50% -10%, rgba(124,92,255,.14), transparent 70%),
+      linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+    background-size: auto, 44px 44px, 44px 44px;
+  }
+  #root { max-width: 780px; margin: 0 auto; padding: 48px 20px 96px; }
+
+  /* -- header ---------------------------------------------------- */
+  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 44px; }
+  .brand .bolt { color: var(--bolt); font-size: 20px; transform: skewX(-8deg); }
+  .brand .word {
+    font-family: "Space Grotesk", sans-serif; font-weight: 700;
+    letter-spacing: .14em; font-size: 17px;
+  }
+  .brand .div { color: var(--line); }
+  .brand .area { color: var(--muted); letter-spacing: .22em; font-size: 12px; text-transform: uppercase; }
+
+  .eyebrow {
+    font-family: "JetBrains Mono", monospace; font-size: 11px; letter-spacing: .28em;
+    color: var(--violet); text-transform: uppercase; margin-bottom: 14px;
+  }
+  h1 {
+    font-family: "Space Grotesk", sans-serif; font-weight: 700;
+    font-size: clamp(30px, 5vw, 42px); line-height: 1.12; letter-spacing: -.01em;
+    margin-bottom: 12px;
+  }
+  .lede { color: var(--muted); max-width: 56ch; margin-bottom: 40px; }
+
+  /* -- form ------------------------------------------------------ */
+  form { display: grid; gap: 26px; }
+  .row { display: grid; gap: 26px; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 640px) { .row { grid-template-columns: 1fr; } }
+
+  label .tag {
+    display: block; font-size: 12px; font-weight: 600; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 8px;
+  }
+  input, textarea {
+    width: 100%; background: var(--panel); color: var(--text);
+    border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 12px 14px; font: inherit; transition: border-color .15s, box-shadow .15s;
+  }
+  input::placeholder, textarea::placeholder { color: #565B70; }
+  input:focus-visible, textarea:focus-visible {
+    outline: none; border-color: var(--violet);
+    box-shadow: 0 0 0 3px rgba(124,92,255,.22);
+  }
+  textarea { min-height: 150px; resize: vertical; }
+
+  /* -- severity matrix (the signature element) ------------------- */
+  fieldset { border: 0; padding: 0; }
+  .sev-grid { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+  @media (max-width: 640px) { .sev-grid { grid-template-columns: 1fr; } }
+  .sev {
+    position: relative; text-align: left; cursor: pointer;
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 14px 16px 14px 22px; color: var(--text); font: inherit; width: 100%;
+    transition: border-color .15s, background .15s, box-shadow .15s;
+  }
+  .sev::before {          /* severity color rail */
+    content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+    border-radius: var(--radius) 0 0 var(--radius); background: var(--sev);
+    opacity: .85;
+  }
+  .sev:hover { background: var(--panel-2); }
+  .sev[aria-pressed="true"] {
+    border-color: var(--sev); background: var(--panel-2);
+    box-shadow: 0 0 0 1px var(--sev), 0 0 24px -8px var(--sev);
+  }
+  .sev:focus-visible { outline: 2px solid var(--violet); outline-offset: 2px; }
+  .sev .head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+  .sev .code {
+    font-family: "JetBrains Mono", monospace; font-size: 13px; font-weight: 500;
+    color: var(--sev); letter-spacing: .06em;
+  }
+  .sev .name { font-family: "Space Grotesk", sans-serif; font-weight: 500; font-size: 15px; }
+  .sev .desc { color: var(--muted); font-size: 13px; line-height: 1.5; }
+
+  /* -- actions / states ------------------------------------------ */
+  .actions { display: flex; align-items: center; gap: 18px; margin-top: 4px; }
+  .submit {
+    font: 600 15px "Space Grotesk", sans-serif; letter-spacing: .02em;
+    color: #fff; background: linear-gradient(135deg, var(--violet), var(--violet-deep));
+    border: 0; border-radius: var(--radius); padding: 13px 26px; cursor: pointer;
+    box-shadow: 0 8px 28px -10px rgba(124,92,255,.65);
+    transition: transform .12s, box-shadow .12s, opacity .12s;
+  }
+  .submit:hover { transform: translateY(-1px); box-shadow: 0 12px 32px -10px rgba(124,92,255,.8); }
+  .submit:disabled { opacity: .55; cursor: default; transform: none; }
+  .submit .arrow { color: var(--bolt); margin-left: 8px; }
+  .hint { color: var(--muted); font-size: 13px; }
+
+  .error {
+    border: 1px solid rgba(255,77,94,.4); background: rgba(255,77,94,.08);
+    border-radius: var(--radius); padding: 14px 16px; color: #FFB4BC; font-size: 14px;
+  }
+  .error ul { margin: 6px 0 0 18px; }
+
+  .success {
+    border: 1px solid rgba(124,92,255,.45); background: rgba(124,92,255,.07);
+    border-radius: var(--radius); padding: 28px; text-align: left;
+  }
+  .success h2 { font-family: "Space Grotesk", sans-serif; margin-bottom: 8px; }
+  .success .id {
+    font-family: "JetBrains Mono", monospace; font-size: 13px; color: var(--bolt);
+    word-break: break-all;
+  }
+  .success p { color: var(--muted); margin-top: 10px; }
+  .success button {
+    margin-top: 18px; background: none; border: 1px solid var(--line);
+    color: var(--text); border-radius: var(--radius); padding: 10px 18px;
+    font: 500 14px "Inter", sans-serif; cursor: pointer;
+  }
+  .success button:hover { border-color: var(--violet); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+const { useEffect, useState } = React;
+
+/* Served from the same Elmer instance, so relative paths reach the API. */
+const API_BASE = "/tickets";
+
+/* Fallback ladder, replaced by GET /tickets/meta/priorities when reachable
+   so the form and the API can never drift apart. */
+const DEFAULT_PRIORITIES = [
+  { code: "P1", label: "Critical",
+    description: "Complete production service outage, active security incident, data loss, or failure of core production functionality with material business impact and no reasonable workaround." },
+  { code: "P2", label: "High",
+    description: "Major degradation of core functionality or partial loss of production service that materially impacts use of the Platform." },
+  { code: "P3", label: "Medium",
+    description: "Non-critical issue with limited impact, minor degradation, or issue where a reasonable workaround is available." },
+  { code: "P4", label: "Low / Request",
+    description: "General inquiry, cosmetic issue, documentation question, enhancement request, or other issue with no material operational impact." },
+];
+
+const SEV_COLORS = { P1: "var(--p1)", P2: "var(--p2)", P3: "var(--p3)", P4: "var(--p4)" };
+
+function TicketForm() {
+  const [priorities, setPriorities] = useState(DEFAULT_PRIORITIES);
+  const [form, setForm] = useState({
+    name: "", email: "", company: "", subject: "", description: "", priority: "P4",
+  });
+  const [errors, setErrors] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [ticket, setTicket] = useState(null);
+
+  useEffect(() => {
+    fetch(API_BASE + "/meta/priorities")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d && d.priorities) setPriorities(d.priorities); })
+      .catch(() => {});
+  }, []);
+
+  const set = (key) => (e) => setForm({ ...form, [key]: e.target.value });
+
+  async function submit(e) {
+    e.preventDefault();
+    setErrors(null);
+    setBusy(true);
+    try {
+      const res = await fetch(API_BASE + "/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setTicket(data.ticket);
+      } else {
+        const details = Array.isArray(data.details) ? data.details : null;
+        setErrors({ message: data.error || "The ticket could not be submitted.", details });
+      }
+    } catch (err) {
+      setErrors({ message: "The support API is unreachable. Check that the Elmer server is running.", details: null });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (ticket) {
+    return (
+      <div className="success" role="status">
+        <h2>Ticket received</h2>
+        <div className="id">{ticket.id}</div>
+        <p>
+          Priority {ticket.priority} — our team triages {ticket.priority === "P1"
+            ? "critical incidents immediately"
+            : "tickets in severity order"}. A confirmation is on its way to {ticket.email}.
+        </p>
+        <button onClick={() => { setTicket(null); setForm({ ...form, subject: "", description: "" }); }}>
+          Submit another ticket
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <React.Fragment>
+      <header className="brand">
+        <span className="bolt" aria-hidden="true">⚡</span>
+        <span className="word">BLTZ</span>
+        <span className="div">/</span>
+        <span className="area">Support</span>
+      </header>
+
+      <p className="eyebrow">Runtime support · severity triage</p>
+      <h1>Report an issue.<br />We fix it, fast.</h1>
+      <p className="lede">
+        Tell us what broke and how badly. Severity sets the response path, so pick the
+        level that matches your operational impact.
+      </p>
+
+      <form onSubmit={submit} noValidate>
+        <div className="row">
+          <label>
+            <span className="tag">Name</span>
+            <input value={form.name} onChange={set("name")} placeholder="Ada Lovelace" required maxLength={200} />
+          </label>
+          <label>
+            <span className="tag">Work email</span>
+            <input type="email" value={form.email} onChange={set("email")} placeholder="ada@company.com" required />
+          </label>
+        </div>
+
+        <label>
+          <span className="tag">Company <span style={{opacity:.5}}>(optional)</span></span>
+          <input value={form.company} onChange={set("company")} placeholder="Analytical Engines, Inc." maxLength={200} />
+        </label>
+
+        <label>
+          <span className="tag">Subject</span>
+          <input value={form.subject} onChange={set("subject")} placeholder="One line: what's broken?" required maxLength={300} />
+        </label>
+
+        <fieldset>
+          <span className="tag" style={{display:"block", marginBottom:10}}>Severity</span>
+          <div className="sev-grid" role="radiogroup" aria-label="Severity">
+            {priorities.map((p) => (
+              <button
+                type="button"
+                key={p.code}
+                className="sev"
+                style={{ "--sev": SEV_COLORS[p.code] }}
+                aria-pressed={form.priority === p.code}
+                onClick={() => setForm({ ...form, priority: p.code })}
+              >
+                <span className="head">
+                  <span className="code">{p.code}</span>
+                  <span className="name">{p.label}</span>
+                </span>
+                <span className="desc">{p.description}</span>
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
+        <label>
+          <span className="tag">What happened</span>
+          <textarea
+            value={form.description}
+            onChange={set("description")}
+            placeholder="Timeline, error messages, affected systems, and anything you've already tried."
+            required
+            maxLength={10000}
+          />
+        </label>
+
+        {errors && (
+          <div className="error" role="alert">
+            {errors.message}
+            {errors.details && (
+              <ul>{errors.details.map((d, i) => <li key={i}>{d}</li>)}</ul>
+            )}
+          </div>
+        )}
+
+        <div className="actions">
+          <button className="submit" type="submit" disabled={busy}>
+            {busy ? "Submitting…" : "Submit ticket"}<span className="arrow">→</span>
+          </button>
+          <span className="hint">P1 tickets page the on-call engineer.</span>
+        </div>
+      </form>
+    </React.Fragment>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<TicketForm />);
+</script>
+</body>
+</html>

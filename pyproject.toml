@@ -1,0 +1,22 @@
+[project]
+name = "elmer"
+version = "1.0.0"
+description = "Flask API with JWT (Python port of the Elmer Express API)"
+requires-python = ">=3.9"
+authors = [{ name = "Nick Campbell" }]
+license = { text = "MIT" }
+dependencies = [
+    "Flask>=3.0.0",
+    "Flask-Compress>=1.14",
+    "PyJWT>=2.8.0",
+    "requests>=2.31.0",
+    "Werkzeug>=3.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/campbeln/elmer#readme"
+Repository = "https://github.com/campbeln/elmer"
+Issues = "https://github.com/campbeln/elmer/issues"
+
+[tool.setuptools]
+packages = ["app", "libs"]
