@@ -15,6 +15,7 @@ MODULES = [
     "test_core_routes.py",
     "test_tickets_api.py",
     "test_vercel_entrypoint.py",
+    "test_security_audit.py",
 ]
 
 failures = 0

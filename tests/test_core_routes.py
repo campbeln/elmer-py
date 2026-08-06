@@ -2,7 +2,7 @@
 
 import json
 
-from _helpers import get_app, run_module
+from _helpers import ELMER_GOOD_HEADERS, get_app, run_module
 
 
 def _json(response):
@@ -37,10 +37,22 @@ def test_jwt_login_good_and_bad():
 
 def test_response_tracking_lifecycle():
     _, _, client = get_app()
-    created = client.post("/elmer/response", json={"data": {"a": 1}})
+
+    # Create is now gated by ELMER_ADMIN_KEY (security audit,
+    # ELMER-SEC-001/002 — this endpoint used to allow unauthenticated,
+    # unbounded creation, a resource-exhaustion vector).
+    unauth = client.post("/elmer/response", json={"data": {"a": 1}})
+    assert unauth.status_code in (401, 503)
+
+    created = client.post("/elmer/response", json={"data": {"a": 1}},
+                          headers=ELMER_GOOD_HEADERS)
     assert created.status_code == 200
     response_id = _json(created)["id"]
 
+    # Update/read-by-id remain unauthenticated by design: this is the
+    # same "unguessable id as capability" pattern used elsewhere (e.g.
+    # /tickets/<uuid>/public) — a caller only reaches these once they
+    # already hold an id handed out by the now-guarded create call.
     updated = client.post("/elmer/response/" + response_id,
                           json={"data": {"a": 2}, "done": True})
     assert updated.status_code == 200
@@ -55,8 +67,16 @@ def test_response_tracking_lifecycle():
 
 def test_proxy_registration_disallows_reserved_routes():
     _, _, client = get_app()
+
+    # Registration is now gated by ELMER_ADMIN_KEY (ELMER-SEC-002 — this
+    # was an unauthenticated SSRF primitive).
+    unauth = client.post("/elmer/proxy", json={
+        "route": "someroute", "port": 3000, "server": "10.0.0.5"})
+    assert unauth.status_code in (401, 503)
+
     rejected = client.post("/elmer/proxy", json={
-        "route": "login", "port": 3000, "server": "10.0.0.5"})
+        "route": "login", "port": 3000, "server": "10.0.0.5"},
+        headers=ELMER_GOOD_HEADERS)
     assert rejected.status_code == 409
 
 
@@ -73,11 +93,18 @@ def test_request_id_tracing_and_cache():
     echoed = client.get("/", headers={"X-Request-Id": "abc-123"})
     assert json.loads(echoed.headers["X-Request-Id"])["id"] == "abc-123"
 
-    # The cache middleware stored the response under the trace id.
-    cached = client.get("/elmer/cache/id/" + trace["id"])
+    # Cache reads are now gated by ELMER_ADMIN_KEY (ELMER-SEC-001 — this
+    # endpoint used to leak every route's response bodies, including
+    # admin-gated ticket PII and issued JWTs, to anyone).
+    unauth = client.get("/elmer/cache/id/" + trace["id"])
+    assert unauth.status_code in (401, 503)
+
+    cached = client.get("/elmer/cache/id/" + trace["id"],
+                        headers=ELMER_GOOD_HEADERS)
     assert cached.status_code == 200
 
-    cleared = client.get("/elmer/cache/clear/id/" + trace["id"])
+    cleared = client.get("/elmer/cache/clear/id/" + trace["id"],
+                         headers=ELMER_GOOD_HEADERS)
     assert _json(cleared)["cleared"] is True
 
 

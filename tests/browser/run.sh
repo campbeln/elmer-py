@@ -11,6 +11,7 @@ cd "$(dirname "$0")"
 ROOT="$(cd ../.. && pwd)"
 
 export TICKETS_ADMIN_KEY="${TICKETS_ADMIN_KEY:-test-admin-key}"
+export ELMER_ADMIN_KEY="${ELMER_ADMIN_KEY:-test-elmer-ops-key}"
 export SUPABASE_URL="http://127.0.0.1:9999"
 export SUPABASE_SERVICE_KEY="stub"
 

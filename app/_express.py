@@ -38,6 +38,38 @@ HANDLED = object()
 # ==================================================
 # Request
 # ==================================================
+def _call_handler_safely(handler, request, response):
+    """Invoke a route handler, converting an unhandled exception into a
+    generic 500 rather than letting it propagate past emit_finish().
+
+    SECURITY (2026-08-06 audit, ELMER-SEC-008): previously, a raising
+    handler skipped emit_finish() entirely, so the cache/audit-log
+    middleware — the only durable record this app keeps of a request —
+    silently never saw it. A crash triggered by malicious input left zero
+    trace beyond an ephemeral stderr traceback (easily lost in containers
+    / serverless). This logs with the trace id for correlation and
+    responds with a generic message — never the exception text, which
+    would be its own information-disclosure regression (A05) — so the
+    audit trail stays accurate either way.
+    """
+    try:
+        handler(request, response)
+    except Exception:
+        import sys
+        import traceback
+        print(
+            "Unhandled exception in %s %s (trace id %s):"
+            % (request.method, request.path, request.trace.get("id", "?")),
+            file=sys.stderr,
+        )
+        traceback.print_exc(file=sys.stderr)
+        response.error_code = 1
+        response.status(500).json({
+            "success": False,
+            "error": "An unexpected error occurred.",
+        })
+
+
 class Request:
     """Express-shaped view over the current Flask request."""
 
@@ -360,7 +392,7 @@ class Router:
                     stack.extend(self.middleware)
 
                     if run_middleware(stack, request, response):
-                        handler(request, response)
+                        _call_handler_safely(handler, request, response)
 
                     response.emit_finish()
                     return response.to_flask()
@@ -523,7 +555,7 @@ class Server:
                 stack.extend(entry["router"].middleware)
 
                 if run_middleware(stack, request, response):
-                    entry["handlers"][endpoint](request, response)
+                    _call_handler_safely(entry["handlers"][endpoint], request, response)
 
                 response.emit_finish()
                 return response.to_flask()
@@ -553,8 +585,21 @@ class Server:
             # Express's static middleware serves a directory's index.html when
             # the path names a directory; mirror that so routes like
             # /www/managetickets/status resolve to .../status/index.html.
+            #
+            # SECURITY (2026-08-06 audit, ELMER-SEC-012): the actual file
+            # READ below was always safe — send_from_directory uses
+            # Werkzeug's safe_join internally and rejects traversal
+            # attempts — but this directory-existence PRE-check used to
+            # run os.path.isdir() on a raw, unsanitized join, so a
+            # crafted path like "../../etc" could make it probe whether a
+            # directory exists *outside* the web root before the read
+            # itself was (correctly) blocked. Confirmed not exploitable
+            # for actual file disclosure, but a directory-existence oracle
+            # is still worth closing outright rather than accepting.
+            from werkzeug.utils import safe_join
             target = filename or "index.html"
-            if os.path.isdir(os.path.join(directory, target)):
+            safe_target = safe_join(directory, target)
+            if safe_target and os.path.isdir(safe_target):
                 target = target.rstrip("/") + "/index.html"
             return send_from_directory(directory, target)
 
@@ -569,7 +614,33 @@ class Server:
         return self
 
     def listen(self, port, host="0.0.0.0", callback=None, debug=False):
-        """Start the server, invoking callback once routes are configured."""
+        """Start the server, invoking callback once routes are configured.
+
+        SECURITY (2026-08-06 audit, ELMER-SEC-006): the Docker deployment
+        path called this with Flask's own dev server as the ONLY option —
+        that server is explicitly documented by Flask/Werkzeug as unfit
+        for production (no real concurrency model, no protection against
+        slow-client/resource-exhaustion patterns). Waitress is used when
+        available: pure-Python, no compiled extensions, and — unlike
+        gunicorn — works on Windows as well as Linux/macOS, matching this
+        project's own QUICKSTART across all three. Vercel is unaffected:
+        that path never calls listen() at all (see api/index.py).
+        """
         if callable(callback):
             callback()
-        self.flask.run(host=host, port=int(port), debug=debug, threaded=True)
+
+        try:
+            from waitress import serve
+        except ImportError:
+            import sys
+            print(
+                "WARNING: waitress is not installed — falling back to "
+                "Flask's development server, which is not fit for "
+                "production use. Run `pip install waitress` (already in "
+                "requirements.txt) to serve this properly.",
+                file=sys.stderr,
+            )
+            self.flask.run(host=host, port=int(port), debug=debug, threaded=True)
+            return
+
+        serve(self.flask, host=host, port=int(port), threads=8)

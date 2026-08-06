@@ -9,8 +9,13 @@
 #   formidable         -> werkzeug (via flask)
 #   jszip              -> zipfile (stdlib)
 #   ip                 -> socket (stdlib)
+# waitress: production WSGI server for the Docker/traditional deployment
+# path (added by security audit, 2026-08-06 — see README's Security Audit
+# section, ELMER-SEC-006). Not needed by the Vercel path, which never
+# calls .listen() at all; not added to api/requirements.txt for that reason.
 Flask>=3.0.0
 Flask-Compress>=1.14
 PyJWT>=2.8.0
 requests>=2.31.0
 Werkzeug>=3.0.0
+waitress>=3.0.0

@@ -4,12 +4,11 @@
     "secure": false,
     "forceRegistration": true,
     "dependencies": [],
-
     "net": "api",
     "hostname": "dev",
     "dockerBaseName": "elmer",
     "port": 3000,
-    "uploadLimitMb": 500,
+    "uploadLimitMb": 50,
     "dns1": "1.1.1.1",
     "dns2": "1.0.0.1"
 }

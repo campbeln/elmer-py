@@ -320,6 +320,21 @@ def apply(elmer, router, base_router=None):
     # ----------------------------------------------
     @router.post("/manage/verify")
     def _manage_verify(request, response):
+        # SECURITY (2026-08-06 audit): the admin-key check itself is
+        # constant-time, but nothing previously limited how many guesses a
+        # caller could make against it.
+        from app.middleware._ratelimit import check
+        allowed, retry_after = check("manage-verify", request,
+                                     max_requests=15, window_seconds=300)
+        if not allowed:
+            response.set("Retry-After", str(retry_after))
+            return elmer.app.error.response(
+                response,
+                Obj({"message": "Too many attempts. Try again shortly.",
+                     "details": {"retryAfterSeconds": retry_after}}),
+                429,
+            )
+
         # _admin_guard writes the 401/503 itself on failure.
         if not _admin_guard(elmer, request, response):
             return
@@ -330,6 +345,21 @@ def apply(elmer, router, base_router=None):
     # ----------------------------------------------
     @router.post("/")
     def _create(request, response):
+        # SECURITY (2026-08-06 audit): this is the one fully public,
+        # unauthenticated write endpoint in the app — previously
+        # unthrottled, making it a spam/resource-exhaustion vector.
+        from app.middleware._ratelimit import check
+        allowed, retry_after = check("ticket-create", request,
+                                     max_requests=20, window_seconds=300)
+        if not allowed:
+            response.set("Retry-After", str(retry_after))
+            return elmer.app.error.response(
+                response,
+                Obj({"message": "Too many ticket submissions. Try again shortly.",
+                     "details": {"retryAfterSeconds": retry_after}}),
+                429,
+            )
+
         table = _table(elmer)
         if table is None:
             return unavailable(response)

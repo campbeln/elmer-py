@@ -27,6 +27,12 @@ ADMIN_KEY = "test-admin-key"
 GOOD_HEADERS = {"X-Admin-Key": ADMIN_KEY}
 BAD_HEADERS = {"X-Admin-Key": "wrong-key"}
 
+#: Elmer's own operational admin key (distinct from the tickets one — see
+#: ELMER-SEC-001/002 in the security audit). Same env-override pattern.
+ELMER_ADMIN_KEY = "test-elmer-ops-key"
+ELMER_GOOD_HEADERS = {"X-Admin-Key": ELMER_ADMIN_KEY}
+ELMER_BAD_HEADERS = {"X-Admin-Key": "wrong-elmer-key"}
+
 _cache = {}
 
 
@@ -34,6 +40,7 @@ def get_app():
     """Build (once) and return (elmer, server, client)."""
     if "app" not in _cache:
         os.environ.setdefault("TICKETS_ADMIN_KEY", ADMIN_KEY)
+        os.environ.setdefault("ELMER_ADMIN_KEY", ELMER_ADMIN_KEY)
         sys.argv = ["_index.py", "dev"]
         import _index
         elmer, server = _index.build()

@@ -12,6 +12,7 @@ supplied in the Authorization header or the ``auth`` cookie.
 """
 
 import hmac
+import os
 import re
 import time
 from datetime import datetime, timedelta, timezone
@@ -59,6 +60,21 @@ def apply(elmer, security_config=None):
         security_config,
     )
 
+    # SECURITY (2026-08-06 audit): environment variables override the
+    # committed config for both signing secrets, matching the pattern
+    # already used for SUPABASE_SERVICE_KEY / TICKETS_ADMIN_KEY /
+    # ELMER_ADMIN_KEY. The shipped app/config/base.json carries example
+    # secrets for local development to work out of the box; any real
+    # deployment MUST override at least jwtSecret via ELMER_JWT_SECRET, or
+    # every JWT this instance issues is forgeable by anyone who has read
+    # this repository (which, being open source, is everyone).
+    env_jwt_secret = os.environ.get("ELMER_JWT_SECRET")
+    if env_jwt_secret:
+        security_config.salt.jwtSecret = env_jwt_secret
+    env_local_secret = os.environ.get("ELMER_JWT_LOCAL_SECRET")
+    if env_local_secret:
+        security_config.salt.localSecret = env_local_secret
+
     # ----------------------------------------------
     # elmer.app.services.security.jwt
     # ----------------------------------------------
@@ -69,8 +85,19 @@ def apply(elmer, security_config=None):
         })
 
     def verify(token):
-        """Verify a token against the configured secret, returning its claims."""
-        secret = elmer.resolve(elmer.app.config, "security.jwt.salt.jwtSecret", "")
+        """Verify a token against the configured secret, returning its claims.
+
+        BUGFIX (2026-08-06 audit follow-up): this used to read straight
+        from elmer.app.config, bypassing the ELMER_JWT_SECRET override
+        applied above — meaning a token signed under a rotated secret (via
+        login(), which correctly used the override) could fail to verify
+        here, while the route-guarding middleware() below — which also
+        correctly used the override — would accept the very same token.
+        Resolving the env var directly keeps all three call sites
+        consistent regardless of closure/call-order timing.
+        """
+        secret = (os.environ.get("ELMER_JWT_SECRET")
+                 or elmer.resolve(elmer.app.config, "security.jwt.salt.jwtSecret", ""))
         return _jwt.decode(token, secret, algorithms=["HS256"])
 
     def login(request, response, mode):
@@ -104,7 +131,10 @@ def apply(elmer, security_config=None):
                 "expiresIn": "8 hours",
             })
 
-        secret = elmer.resolve(security_config, "salt.jwtSecret", "")
+        # Env var always wins, resolved live (not just at apply()-call
+        # time) — consistent with verify() above.
+        secret = (os.environ.get("ELMER_JWT_SECRET")
+                 or elmer.resolve(security_config, "salt.jwtSecret", ""))
         user = None
 
         if (body and jwt_config
@@ -144,6 +174,14 @@ def apply(elmer, security_config=None):
     def login_router():
         """Build the /login router (admin, internal, external and verify)."""
         router = elmer.app.services.web.router()
+
+        # SECURITY (2026-08-06 audit): no throttling previously existed on
+        # login at all — combined with plaintext example credentials in
+        # config, this endpoint was an unthrottled brute-force target.
+        # 10 attempts/minute/client is deliberately tight for a login
+        # endpoint; legitimate users retry rarely, attackers guess a lot.
+        from ._ratelimit import limiter
+        router.use(limiter("login", max_requests=10, window_seconds=60))
 
         # Ensure the JWT service is configured before the routes are used.
         apply(elmer, None)
@@ -221,7 +259,8 @@ def apply(elmer, security_config=None):
                     return
             else:
                 try:
-                    secret = elmer.resolve(security_config, "salt.jwtSecret", "")
+                    secret = (os.environ.get("ELMER_JWT_SECRET")
+                             or elmer.resolve(security_config, "salt.jwtSecret", ""))
                     request.user = _jwt.decode(auth, secret, algorithms=["HS256"])
                 except _jwt.PyJWTError:
                     response.status(401).json({

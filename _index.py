@@ -92,6 +92,44 @@ def build():
             response.headers.pop("Content-Encoding", None)
         return response
 
+    # SECURITY (2026-08-06 audit): the app previously set no security
+    # headers at all. CSP's script-src/style-src need 'unsafe-inline'
+    # because the /www pages are zero-build — JSX is transpiled by
+    # Babel from inline <script type="text/babel"> blocks at request
+    # time, so there is no nonce/build step to attach a stricter policy
+    # to. That is a real, accepted trade-off of the zero-build approach,
+    # not an oversight; everything else in the policy is kept tight
+    # (no wildcard sources, no framing, no unexpected origins).
+    _CSP = "; ".join([
+        "default-src 'self'",
+        "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com",
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+        "font-src 'self' https://fonts.gstatic.com",
+        "img-src 'self' data:",
+        "connect-src 'self'",
+        "object-src 'none'",
+        "base-uri 'none'",
+        "frame-ancestors 'none'",
+    ])
+
+    @http_server.flask.after_request
+    def _security_headers(response):
+        response.headers.setdefault("Content-Security-Policy", _CSP)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault(
+            "Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault(
+            "Permissions-Policy",
+            "camera=(), microphone=(), geolocation=(), payment=()")
+        # Browsers only honour HSTS on responses actually received over
+        # HTTPS, so it is safe to always send — harmless over plain HTTP
+        # in local dev, effective once behind TLS (Vercel, or a reverse
+        # proxy terminating TLS in front of Docker).
+        response.headers.setdefault(
+            "Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        return response
+
     # Configure body size limits.
     #     NOTE: Unlike Express's body-parser, Flask parses bodies lazily, so
     #     proxied routes do not need to be excluded to keep their stream intact.
@@ -119,8 +157,66 @@ def build():
     return elmer, http_server
 
 
+_KNOWN_DEFAULT_SECRET_HASHES = {
+    # SHA-256 fingerprints of the example secrets shipped in
+    # app/config/base.json — compared, never the plaintext itself, so this
+    # file doesn't become a second place carrying the actual secret value.
+    "dd620c684874700dfdc07e56b425b3bec28e3af7b93e0055e01a477db2a317f5",  # jwtSecret
+    "a8aa269dd4ef4f1450fbd4715c19ca095d1ce2084a15293a2bd8551d7f547ca0",  # localSecret
+}
+_KNOWN_WEAK_PASSWORDS = {"secret", "pass1", "pass2", "nonsecret", "unsecret"}
+
+
+def _warn_if_unrotated_defaults():
+    """Startup check (2026-08-06 security audit): nudge operators to
+    rotate the example credentials shipped in app/config/base.json before
+    any real deployment. Never blocks startup — this is advisory only,
+    printed once to stderr where it won't be mistaken for API output.
+    """
+    import hashlib
+
+    warnings = []
+
+    jwt_secret = elmer.resolve(elmer.app.config, "security.jwt.salt.jwtSecret", "")
+    if jwt_secret and hashlib.sha256(jwt_secret.encode()).hexdigest() in _KNOWN_DEFAULT_SECRET_HASHES:
+        warnings.append(
+            "security.jwt.salt.jwtSecret is still the example value shipped "
+            "in app/config/base.json — every JWT this instance issues can be "
+            "forged by anyone who has read the source. Set ELMER_JWT_SECRET."
+        )
+
+    for pool_path in ("security.basic.users", "security.jwt.admin",
+                      "security.jwt.internal", "security.jwt.external"):
+        for user in elmer.resolve(elmer.app.config, pool_path, []) or []:
+            password = elmer.resolve(user, "p")
+            if password in _KNOWN_WEAK_PASSWORDS:
+                warnings.append(
+                    "%s contains a user with the example password %r — "
+                    "rotate it before any real deployment."
+                    % (pool_path, password)
+                )
+
+    if not os.environ.get("ELMER_ADMIN_KEY") and not elmer.resolve(
+            elmer.app.config, "elmer.adminKey"):
+        warnings.append(
+            "ELMER_ADMIN_KEY is unset — /elmer/proxy and /elmer/cache/* "
+            "will refuse all requests (fail-closed) until it is set."
+        )
+
+    if warnings:
+        rule = "!" * 70
+        print(rule, file=sys.stderr)
+        print("ELMER SECURITY WARNING — unrotated example credentials detected:",
+             file=sys.stderr)
+        for warning in warnings:
+            print("  - " + warning, file=sys.stderr)
+        print(rule, file=sys.stderr)
+
+
 def on_listening():
     """Configure routes and report status once the server is up."""
+    _warn_if_unrotated_defaults()
+
     elmer.app.status = elmer.extend(elmer.app.status, {
         "name": elmer.app.config.get("name"),
         "port": elmer.app.config.get("port"),

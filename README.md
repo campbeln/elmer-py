@@ -486,3 +486,33 @@ Submitting a status update on `/www/managetickets/status/?id=` now
 navigates straight to `/www/managetickets/view/?id=` on success, landing
 on a page that already shows the just-made update in its history — rather
 than staying on the form with an inline confirmation.
+
+---
+
+## Security audit (2026-08-06)
+
+A full security audit was performed against this codebase — dependency
+scan, secret/pattern search, and an OWASP Top 10 assessment, with every
+finding verified against a running instance both before and after its
+fix. Two Critical, internet-exploitable findings were closed (an
+unauthenticated endpoint that leaked admin-gated data and issued JWTs,
+and an unauthenticated SSRF primitive), along with three High and five
+Medium findings. Full report, including Proof of Concept reproductions
+and the two implementation bugs the verification step itself caught:
+**[`SECURITY_AUDIT.md`](./SECURITY_AUDIT.md)**.
+
+### New environment variables from the audit
+
+| Variable | Purpose | Required? |
+|---|---|---|
+| `ELMER_ADMIN_KEY` | Gates `/elmer/proxy` and all `/elmer/cache/*` routes — previously unauthenticated. Fails closed (503) if unset. | Yes, before deploying — these routes refuse all requests without it. |
+| `ELMER_JWT_SECRET` | Overrides the JWT signing secret shipped in `app/config/base.json`. That shipped value is an example only and must be treated as public. | **Strongly recommended** for any real deployment. |
+| `ELMER_JWT_LOCAL_SECRET` | Overrides the paired local-request secret (currently dormant — the local-request bypass path is disabled in this port). | Optional. |
+
+**Breaking change:** child-API self-registration (`POST /elmer/proxy`)
+now requires a matching `X-Admin-Key` header. Any service that self-
+registers on startup needs to be updated to send it.
+
+On startup, the app checks whether the shipped example JWT secret or any
+shipped example password is still in use and prints a loud warning to
+stderr if so — it never blocks startup, only nudges.

@@ -17,6 +17,8 @@ COPY . .
 EXPOSE $port
 
 # Run the app
+# _index.py serves via waitress (a production WSGI server) when it's
+# installed — see requirements.txt and app/_express.py's Server.listen().
 # i.e. `python _index.py`
 CMD [ "python", "_index.py" ]
 

@@ -123,6 +123,14 @@ def apply(elmer):
                 ) or []
                 if origin and origin in whitelist:
                     response.set("Access-Control-Allow-Origin", origin)
+                    # SECURITY (2026-08-06 audit): only set alongside a
+                    # validated Access-Control-Allow-Origin — previously
+                    # set unconditionally, which is not itself exploitable
+                    # (browsers still require ACAO to be a specific,
+                    # matching origin for a credentialed request to
+                    # succeed) but is a misconfiguration a scanner will
+                    # flag and a future edit could easily turn into one.
+                    response.set("Access-Control-Allow-Credentials", "true")
 
                 # NOTE: CRUD = POST, GET/POST, PUT, DELETE
                 response.set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE")
@@ -130,7 +138,6 @@ def apply(elmer):
                     "Access-Control-Allow-Headers",
                     "X-Requested-With,content-type,Authorization",
                 )
-                response.set("Access-Control-Allow-Credentials", "true")
 
                 # Parse the querystring and attach it to the request.
                 request.querystring = elmer.io.web.queryString.parse(request.url)
