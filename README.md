@@ -292,7 +292,19 @@ default search list (leading underscore), and `build()`/`main()` start a
 *listening* dev server rather than exposing a bare callable. `api/index.py`
 bridges the two — it runs the same `_index.build()` bootstrap and route
 registration, then hands over `http_server.flask` as `app` without ever
-calling `.listen()`. `vercel.json` routes every path to that function.
+calling `.listen()`.
+
+`vercel.json` deliberately contains **no `builds` property** — Vercel's
+zero-configuration detection picks up `api/index.py` as a Python function
+on its own, and a `builds` entry would make Vercel ignore all dashboard
+Build & Development Settings (emitting a deploy-time warning about it).
+The catch-all uses the `routes` property rather than the more modern
+`rewrites`, and that choice is load-bearing: rewrites apply *after*
+Vercel's filesystem check, which in a no-framework project serves repo
+files — including `app/config/*.json` — as static assets at their raw
+URLs. `routes` (with no `handle: filesystem` entry) sends every request
+to the function before any static serving happens.
+`tests/test_vercel_entrypoint.py` guards both properties.
 
 ```bash
 npm i -g vercel      # if you don't have the CLI yet
@@ -391,6 +403,16 @@ return `503 Ticket management is not enabled` rather than opening up.
 Comparison uses `hmac.compare_digest`. Each form gates its UI through
 `POST /tickets/manage/verify` before loading data; the entered key is held
 in page memory only — never persisted, never placed in a URL.
+
+If the environment already supplies a valid `X-Admin-Key` on requests — a
+reverse proxy in front of the console, a header-injecting browser
+extension, or an embedding tool — the forms detect this automatically: on
+load they probe `verify` with no key attached, and when the injected
+header passes, the "Management key required" prompt is skipped and all
+later API calls omit the header so the same injection authenticates them
+in transit. Browsers can't set custom headers on their own, so a plain
+visit still sees the prompt, and server-side enforcement is unchanged
+either way.
 
 Note the honest limits of this scheme: it's one shared bearer secret over
 whatever transport you serve — fine for a small internal console behind

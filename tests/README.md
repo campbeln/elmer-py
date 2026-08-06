@@ -52,6 +52,7 @@ shell's own command line and kill the test run itself).
 | `test_queue.js` | `/www/managetickets` renders with **zero script errors**, the key gate unlocks, queue rows load, CNRZ wordmark shows |
 | `test_view_and_status.js` | Deep-linked view page shows the full record; status page loads the context card, updates to `in_progress`, and the change **persists through Elmer to the database** |
 | `test_submit_form.js` | `/www/tickets.html` renders, severity cards select, a P2 ticket submits and is verified stored |
+| `test_ambient_key.js` | With a valid `X-Admin-Key` injected on every request (reverse proxy / header extension), the key prompt never appears and data loads directly; without it, the gate still guards |
 
 `_shared.js` holds the plumbing: a jsdom `ResourceLoader` that serves the
 CDN script URLs from local `node_modules`, a `fetch` bridge into the local

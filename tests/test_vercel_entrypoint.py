@@ -34,5 +34,30 @@ def test_exposes_flask_app_and_serves_routes():
     assert client.get("/www/tickets.html").status_code == 200
 
 
+def test_vercel_json_has_no_legacy_builds():
+    """`builds` in vercel.json makes Vercel ignore all dashboard Build &
+    Development Settings and emits a deploy-time warning. Zero-config
+    detection of api/index.py replaces it — this guards against it
+    creeping back."""
+    with open(os.path.join(ROOT, "vercel.json"), encoding="utf8") as handle:
+        config = json.load(handle)
+    assert "builds" not in config
+
+
+def test_vercel_json_routes_everything_to_the_function():
+    """The catch-all must use `routes`, NOT `rewrites`: rewrites apply
+    after Vercel's filesystem check, which in a no-framework project would
+    serve repo files — including app/config/*.json with its secrets — as
+    static assets. `routes` (with no `handle: filesystem` entry) sends
+    every request to the function before any static serving."""
+    with open(os.path.join(ROOT, "vercel.json"), encoding="utf8") as handle:
+        config = json.load(handle)
+    assert "rewrites" not in config, "rewrites would expose repo files statically"
+    routes = config.get("routes", [])
+    assert routes and routes[0]["src"] == "/(.*)"
+    assert routes[0]["dest"].startswith("/api/index")
+    assert not any("handle" in r for r in routes)
+
+
 if __name__ == "__main__":
     raise SystemExit(run_module(globals()))

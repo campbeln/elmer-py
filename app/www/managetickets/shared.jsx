@@ -62,16 +62,17 @@ function Nav({ current }) {
   );
 }
 
-/* Fetch wrapper: attaches the management key, normalises error shapes. */
+/* Fetch wrapper: attaches the management key, normalises error shapes.
+ * When adminKey is empty/null, the header is OMITTED — so an environment
+ * that injects X-Admin-Key itself (reverse proxy, header extension,
+ * embedding tool) supplies it in transit instead. */
 async function api(path, adminKey, opts = {}) {
-  const res = await fetch(path, {
-    ...opts,
-    headers: {
-      "Content-Type": "application/json",
-      "X-Admin-Key": adminKey,
-      ...(opts.headers || {}),
-    },
-  });
+  const headers = {
+    "Content-Type": "application/json",
+    ...(opts.headers || {}),
+  };
+  if (adminKey) headers["X-Admin-Key"] = adminKey;
+  const res = await fetch(path, { ...opts, headers });
   let data = null;
   try { data = await res.json(); } catch (e) { /* non-JSON body */ }
   return { ok: res.ok, status: res.status, data };
@@ -82,12 +83,30 @@ async function api(path, adminKey, opts = {}) {
  * been verified against POST /tickets/manage/verify. The key lives in
  * component state only: nothing is written to storage, so closing or
  * refreshing the page requires re-entry. That is deliberate.
+ *
+ * Before prompting, the gate probes verify with NO key attached. Browsers
+ * can't add custom headers themselves, but a reverse proxy, header
+ * extension, or embedding tool that injects a valid X-Admin-Key onto
+ * requests will make that probe succeed — in which case the prompt is
+ * skipped entirely and every later API call also omits the header,
+ * letting the same injection authenticate it in transit.
+ *
+ * Key state: null = probing, "" = ambient header verified (omit ours),
+ * non-empty string = key the person typed.
  */
 function KeyGate({ children }) {
-  const [key, setKey] = useState("");
+  const [key, setKey] = useState(null);
+  const [probing, setProbing] = useState(true);
   const [entered, setEntered] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+
+  useEffect(() => {
+    api("/tickets/manage/verify", null, { method: "POST" })
+      .then((res) => { if (res.ok) setKey(""); })
+      .catch(() => {})
+      .finally(() => setProbing(false));
+  }, []);
 
   async function verify(e) {
     e.preventDefault();
@@ -109,7 +128,11 @@ function KeyGate({ children }) {
     }
   }
 
-  if (!key) {
+  if (probing) {
+    return <p className="empty">Checking access…</p>;
+  }
+
+  if (key === null) {
     return (
       <div className="gate">
         <h2>Management key required</h2>

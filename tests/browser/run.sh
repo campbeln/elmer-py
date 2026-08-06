@@ -32,7 +32,7 @@ for i in $(seq 1 20); do
 done
 
 FAILED=0
-for t in test_queue.js test_view_and_status.js test_submit_form.js; do
+for t in test_queue.js test_view_and_status.js test_submit_form.js test_ambient_key.js; do
     echo "============================================================"
     echo "$t"
     echo "============================================================"

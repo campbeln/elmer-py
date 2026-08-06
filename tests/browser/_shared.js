@@ -59,15 +59,23 @@ function setValue(window, element, value) {
   element.dispatchEvent(new window.Event("change", { bubbles: true }));
 }
 
-async function openPage(pathname) {
+async function openPage(pathname, options = {}) {
+  /* options.injectKey: add X-Admin-Key to every fetch the page makes,
+   * simulating a reverse proxy or header-injecting extension. */
   const errors = [];
   const dom = await JSDOM.fromURL(BASE + pathname, {
     runScripts: "dangerously",
     resources: new Loader(),
     pretendToBeVisual: true,
     beforeParse(window) {
-      window.fetch = (input, init) =>
-        fetch(new URL(String(input), BASE).href, init);
+      window.fetch = (input, init = {}) => {
+        if (options.injectKey) {
+          init = { ...init,
+                   headers: { ...(init.headers || {}),
+                              "X-Admin-Key": ADMIN_KEY } };
+        }
+        return fetch(new URL(String(input), BASE).href, init);
+      };
       window.addEventListener("error", (e) =>
         errors.push(String(e.message || e.error)));
     },
