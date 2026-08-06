@@ -8,7 +8,7 @@
  */
 const fs = require("fs");
 const path = require("path");
-const { JSDOM, ResourceLoader } = require("jsdom");
+const { JSDOM, ResourceLoader, VirtualConsole } = require("jsdom");
 
 const BASE = process.env.ELMER_BASE || "http://127.0.0.1:3001";
 const ADMIN_KEY = process.env.TICKETS_ADMIN_KEY || "test-admin-key";
@@ -61,11 +61,22 @@ function setValue(window, element, value) {
 
 async function openPage(pathname, options = {}) {
   /* options.injectKey: add X-Admin-Key to every fetch the page makes,
-   * simulating a reverse proxy or header-injecting extension. */
+   * simulating a reverse proxy or header-injecting extension.
+   *
+   * jsdomErrors collects jsdom's own error stream. Two uses: it silences
+   * harmless noise (e.g. blocked font CDNs in sandboxes), and it is the
+   * only way to observe navigation — jsdom does not implement page
+   * navigation, so a click that sets window.location.href surfaces as a
+   * "Not implemented: navigation" jsdomError rather than a URL change. */
   const errors = [];
+  const jsdomErrors = [];
+  const virtualConsole = new VirtualConsole();
+  virtualConsole.on("jsdomError", (e) =>
+    jsdomErrors.push(String((e && e.message) || e)));
   const dom = await JSDOM.fromURL(BASE + pathname, {
     runScripts: "dangerously",
     resources: new Loader(),
+    virtualConsole,
     pretendToBeVisual: true,
     beforeParse(window) {
       window.fetch = (input, init = {}) => {
@@ -80,7 +91,7 @@ async function openPage(pathname, options = {}) {
         errors.push(String(e.message || e.error)));
     },
   });
-  return { dom, errors };
+  return { dom, errors, jsdomErrors };
 }
 
 /* Drive the management key gate on any /www/managetickets page. */

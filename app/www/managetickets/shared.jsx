@@ -182,7 +182,32 @@ function fmtDate(iso) {
   try { return new Date(iso).toLocaleString(); } catch (e) { return iso; }
 }
 
+/* Status history timeline (newest first — the API already orders desc). */
+function UpdatesList({ updates }) {
+  if (!updates || !updates.length) {
+    return <p className="empty" style={{ textAlign: "left", padding: "8px 0" }}>
+      No status updates yet.
+    </p>;
+  }
+  return (
+    <div className="updates">
+      {updates.map((u, i) => (
+        <div className="update-entry" key={u.id || i}>
+          <div className="head">
+            <StatusBadge status={u.status} />
+            <span className="when">{fmtDate(u.created_at)}</span>
+          </div>
+          {u.message
+            ? <div className="msg">{u.message}</div>
+            : <div className="no-msg">No message with this update.</div>}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 window.Manage = {
-  useBranding, Brand, Nav, KeyGate, api, SevBadge, StatusBadge, SEV_COLORS, fmtDate,
+  useBranding, Brand, Nav, KeyGate, api, SevBadge, StatusBadge, SEV_COLORS,
+  fmtDate, UpdatesList,
 };
 })();

@@ -143,3 +143,23 @@ select { appearance: none; }
 @media (max-width: 640px) { .filters { grid-template-columns: 1fr; } }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+/* -- clickable queue rows + status history ----------------------- */
+.tickets-table tr.clickable { cursor: pointer; }
+.tickets-table tr.clickable:focus-visible { outline: 2px solid var(--violet); outline-offset: -2px; }
+
+.updates { display: grid; gap: 0; margin-top: 4px; }
+.update-entry { position: relative; padding: 0 0 18px 22px; }
+.update-entry::before {           /* timeline dot */
+  content: ""; position: absolute; left: 0; top: 6px; width: 9px; height: 9px;
+  border-radius: 50%; background: var(--violet);
+}
+.update-entry::after {            /* timeline rail */
+  content: ""; position: absolute; left: 4px; top: 17px; bottom: 0;
+  width: 1px; background: var(--line);
+}
+.update-entry:last-child::after { display: none; }
+.update-entry .head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+.update-entry .when { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--muted); }
+.update-entry .msg { color: var(--text); font-size: 14px; white-space: pre-wrap; }
+.update-entry .no-msg { color: #565B70; font-size: 13px; font-style: italic; }

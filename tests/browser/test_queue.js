@@ -9,7 +9,7 @@
 const { openPage, unlock, waitFor } = require("./_shared");
 
 (async () => {
-  const { dom, errors } = await openPage("/www/managetickets");
+  const { dom, errors, jsdomErrors } = await openPage("/www/managetickets");
   const doc = dom.window.document;
 
   await unlock(dom.window);
@@ -20,7 +20,24 @@ const { openPage, unlock, waitFor } = require("./_shared");
   console.log("queue rows:", rows.length);
   console.log("brand:", doc.querySelector(".brand .word").textContent);
 
-  const pass = errors.length === 0 && rows.length >= 2;
+  // Clicking a row navigates to the view page for that ticket. jsdom
+  // can't perform the navigation, so the attempt surfaces as a
+  // "Not implemented: navigation" jsdomError — that's the signal.
+  const firstRow = doc.querySelector(".tickets-table tbody tr.clickable");
+  console.log("rows are clickable:", !!firstRow);
+  let navigated = false;
+  if (firstRow) {
+    firstRow.click();
+    await waitFor(
+      () => jsdomErrors.some((m) => /navigation/i.test(m)),
+      "row-click navigation attempt", 5000)
+      .then(() => { navigated = true; })
+      .catch(() => {});
+  }
+  console.log("row click navigates:", navigated);
+
+  const pass = errors.length === 0 && rows.length >= 2
+    && !!firstRow && navigated;
   console.log("RESULT:", pass ? "PASS" : "FAIL");
   dom.window.close();
   process.exit(pass ? 0 : 1);

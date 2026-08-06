@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#000000" />
+<title>Ticket status</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/www/managetickets/shared.css" />
+</head>
+<body>
+<div id="root"></div>
+
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+(() => {
+/* Public, read-only ticket status. Talks only to GET /tickets/:id/public,
+ * which needs no admin key and returns a reduced shape (no reporter
+ * identity, no description) — the unguessable ticket UUID in the link is
+ * the access token. Self-contained: no shared.jsx, no key gate. */
+const { useEffect, useState } = React;
+
+const SEV_COLORS = { P1: "var(--p1)", P2: "var(--p2)", P3: "var(--p3)", P4: "var(--p4)" };
+
+function fmtDate(iso) {
+  if (!iso) return "";
+  try { return new Date(iso).toLocaleString(); } catch (e) { return iso; }
+}
+
+function StatusBadge({ status }) {
+  return <span className="status-badge" data-s={status}>
+    {String(status || "").replace("_", " ")}</span>;
+}
+
+function TicketStatus() {
+  const initial = new URLSearchParams(window.location.search).get("id") || "";
+  const [branding, setBranding] = useState({ name: "CNRZ", area: "Support" });
+  const [ticketId, setTicketId] = useState(initial);
+  const [ticket, setTicket] = useState(null);
+  const [updates, setUpdates] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetch("/tickets/meta/priorities")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        if (d && d.branding && d.branding.name) {
+          setBranding(d.branding);
+          document.title = "Ticket status — " + d.branding.name;
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  async function load(id) {
+    if (!id || !id.trim()) return;
+    setBusy(true);
+    setError(null);
+    setTicket(null);
+    try {
+      const res = await fetch(
+        "/tickets/" + encodeURIComponent(id.trim()) + "/public");
+      const data = await res.json();
+      if (res.ok && data.ticket) {
+        setTicket(data.ticket);
+        setUpdates(data.updates || []);   // API returns newest first
+      } else {
+        setError(data.error || "That ticket could not be found.");
+      }
+    } catch (err) {
+      setError("The support API is unreachable right now.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  useEffect(() => { if (initial) load(initial); }, []);
+
+  function submit(e) {
+    e.preventDefault();
+    load(ticketId);
+  }
+
+  return (
+    <React.Fragment>
+      <header className="brand">
+        <span className="bolt" aria-hidden="true">⚡</span>
+        <span className="word">{branding.name}</span>
+        <span className="div">/</span>
+        <span className="area">{branding.area || "Support"} · Status</span>
+      </header>
+
+      <p className="eyebrow">Ticket status · read only</p>
+      <h1>Track your ticket</h1>
+      <p className="lede">
+        Every status change our team makes, with their notes — newest first.
+        Your ticket ID was shown when you submitted.
+      </p>
+
+      <form onSubmit={submit} className="filters"
+            style={{ gridTemplateColumns: "1fr auto" }}>
+        <label>
+          <span className="tag">Ticket ID</span>
+          <input value={ticketId} onChange={(e) => setTicketId(e.target.value)}
+                 placeholder="00000000-0000-0000-0000-000000000000" />
+        </label>
+        <button className="btn" type="submit" disabled={busy || !ticketId.trim()}>
+          {busy ? "Loading…" : "Check status"}<span className="arrow">→</span>
+        </button>
+      </form>
+
+      {error && <div className="error" role="alert">{error}</div>}
+
+      {ticket && (
+        <div className="detail">
+          <div style={{ display: "flex", gap: 12, alignItems: "center",
+                        flexWrap: "wrap" }}>
+            <span className="sev-badge"
+                  style={{ "--sev": SEV_COLORS[ticket.priority] || "var(--p4)" }}>
+              {ticket.priority}
+            </span>
+            <StatusBadge status={ticket.status} />
+            <span style={{ fontWeight: 500 }}>{ticket.subject}</span>
+          </div>
+          <div className="field">
+            <span className="tag">Opened</span>
+            <div className="who">{fmtDate(ticket.created_at)}</div>
+          </div>
+          <div className="field">
+            <span className="tag">Status updates</span>
+            {updates.length === 0 ? (
+              <p className="empty" style={{ textAlign: "left", padding: "8px 0" }}>
+                No status updates yet — the team will post here as work
+                progresses.
+              </p>
+            ) : (
+              <div className="updates">
+                {updates.map((u, i) => (
+                  <div className="update-entry" key={i}>
+                    <div className="head">
+                      <StatusBadge status={u.status} />
+                      <span className="when">{fmtDate(u.created_at)}</span>
+                    </div>
+                    {u.message
+                      ? <div className="msg">{u.message}</div>
+                      : <div className="no-msg">No message with this update.</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </React.Fragment>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<TicketStatus />);
+})();
+</script>
+</body>
+</html>

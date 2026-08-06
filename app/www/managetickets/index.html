@@ -86,7 +86,19 @@ function Queue({ adminKey }) {
           </thead>
           <tbody>
             {tickets.map((t) => (
-              <tr key={t.id}>
+              <tr key={t.id} className="clickable" tabIndex={0}
+                  role="link"
+                  aria-label={"Open ticket " + t.subject}
+                  onClick={() => {
+                    window.location.href =
+                      "/www/managetickets/view/?id=" + t.id;
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      window.location.href =
+                        "/www/managetickets/view/?id=" + t.id;
+                    }
+                  }}>
                 <td><SevBadge code={t.priority} /></td>
                 <td>
                   <div className="subject">{t.subject}</div>

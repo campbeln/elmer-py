@@ -163,13 +163,15 @@ class SupabaseTable:
         return self._call("PATCH", params=filters, json=patch, headers=headers)
 
 
-def _table(elmer):
-    """Resolve the configured tickets table, memoised on elmer.app.data.
+def _table(elmer, name="tickets"):
+    """Resolve a configured Supabase table, memoised on elmer.app.data.
 
     Environment variables override config so deployments can keep the
-    service-role key out of the repo.
+    service-role key out of the repo. Tests inject fakes under the same
+    keys ('tickets_table', 'ticket_status_updates_table').
     """
-    existing = elmer.resolve(elmer.app.data, "tickets_table")
+    cache_key = name + "_table"
+    existing = elmer.resolve(elmer.app.data, cache_key)
     if existing is not None:
         return existing
 
@@ -182,8 +184,8 @@ def _table(elmer):
     if not url or not key:
         return None
 
-    elmer.app.data.tickets_table = SupabaseTable(url, key, "tickets")
-    return elmer.app.data.tickets_table
+    elmer.app.data[cache_key] = SupabaseTable(url, key, name)
+    return elmer.app.data[cache_key]
 
 
 def _validate_ticket(elmer, body):
@@ -450,7 +452,20 @@ def apply(elmer, router, base_router=None):
                 elmer.io.net.status.clientError.notFound,
             )
 
-        response.status(200).json({"success": True, "ticket": rows[0]})
+        payload = Obj({"success": True, "ticket": rows[0], "updates": []})
+
+        # Status history, newest first. A history-read failure degrades to
+        # an empty list with a flag rather than failing the whole read.
+        history = _table(elmer, "ticket_status_updates")
+        if history is not None:
+            updates = history.select({"ticket_id": "eq." + ticket_id},
+                                     order="created_at.desc")
+            if updates.ok:
+                payload.updates = updates.data or []
+            else:
+                payload.updates_error = True
+
+        response.status(200).json(payload)
 
     # ----------------------------------------------
     # POST /tickets/:id/status — advance a ticket's lifecycle
@@ -480,6 +495,14 @@ def apply(elmer, router, base_router=None):
                 elmer.io.net.status.clientError.badRequest,
             )
 
+        message = elmer.type.str.mk(
+            elmer.resolve(request.body, "message")).strip()
+        if len(message) > 2000:
+            return elmer.app.error.response(
+                response, "'message' must be 2000 characters or fewer.",
+                elmer.io.net.status.clientError.badRequest,
+            )
+
         result = table.update({"id": "eq." + ticket_id}, {"status": status})
         if not result.ok:
             return elmer.app.error.response(
@@ -496,4 +519,88 @@ def apply(elmer, router, base_router=None):
                 elmer.io.net.status.clientError.notFound,
             )
 
-        response.status(200).json({"success": True, "ticket": rows[0]})
+        payload = Obj({"success": True, "ticket": rows[0], "update": None})
+
+        # Record the change (and its message) in the history table. The
+        # status change itself has already succeeded, so a history-write
+        # failure is reported alongside rather than turned into an error —
+        # otherwise a retry would double-apply nothing but still confuse.
+        history = _table(elmer, "ticket_status_updates")
+        if history is not None:
+            record = history.insert({
+                "ticket_id": ticket_id,
+                "status": status,
+                "message": message or None,
+            })
+            if record.ok:
+                entries = record.data or []
+                payload.update = entries[0] if entries else None
+            else:
+                payload.history_error = True
+
+        response.status(200).json(payload)
+
+    # ----------------------------------------------
+    # GET /tickets/:id/public — read-only status view, NO admin key
+    # ----------------------------------------------
+    # The unguessable ticket UUID acts as the access token (the submitter
+    # receives it at creation), so this endpoint deliberately returns a
+    # REDUCED shape: subject, priority, lifecycle, timestamps, and the
+    # status history. Reporter identity (name, email, company) and the
+    # full description are withheld — anyone who is handed the link can
+    # follow progress without being handed the reporter's details.
+    @router.get("/:id/public")
+    def _public_read(request, response):
+        table = _table(elmer)
+        if table is None:
+            return unavailable(response)
+
+        ticket_id = elmer.type.str.mk(request.params.get("id")).strip()
+        if not _UUID_RE.match(ticket_id):
+            return elmer.app.error.response(
+                response, "Ticket id must be a UUID.",
+                elmer.io.net.status.clientError.badRequest,
+            )
+
+        result = table.select({"id": "eq." + ticket_id}, limit=1)
+        if not result.ok:
+            return elmer.app.error.response(
+                response,
+                Obj({"message": "Ticket could not be read.",
+                     "details": _diagnose(elmer, result)}),
+                elmer.io.net.status.serverError.badGateway,
+            )
+
+        rows = result.data or []
+        if not rows:
+            return elmer.app.error.response(
+                response, "Ticket not found.",
+                elmer.io.net.status.clientError.notFound,
+            )
+
+        ticket = rows[0]
+        updates = []
+        history = _table(elmer, "ticket_status_updates")
+        if history is not None:
+            fetched = history.select({"ticket_id": "eq." + ticket_id},
+                                     order="created_at.desc")
+            if fetched.ok:
+                updates = [
+                    {"status": u.get("status"),
+                     "message": u.get("message"),
+                     "created_at": u.get("created_at")}
+                    for u in (fetched.data or [])
+                ]
+
+        response.status(200).json({
+            "success": True,
+            "ticket": {
+                "id": ticket.get("id"),
+                "subject": ticket.get("subject"),
+                "priority": ticket.get("priority"),
+                "status": ticket.get("status"),
+                "created_at": ticket.get("created_at"),
+                "updated_at": ticket.get("updated_at"),
+            },
+            "updates": updates,
+        })

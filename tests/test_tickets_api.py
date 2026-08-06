@@ -126,5 +126,76 @@ def test_supabase_auth_failure_gets_actionable_hint():
         use_table(previous)
 
 
+def test_status_message_recorded_and_history_returned():
+    _, _, client = get_app()
+    prev_tickets = use_table(FakeTable())
+    prev_updates = use_table(FakeTable(), "ticket_status_updates")
+    try:
+        _, data = make_ticket(client)
+        ticket_id = data["ticket"]["id"]
+
+        # Two status changes, each with a message.
+        first = _json(client.post("/tickets/%s/status" % ticket_id,
+                                  json={"status": "acknowledged",
+                                        "message": "We're on it."},
+                                  headers=GOOD_HEADERS))
+        assert first["update"]["message"] == "We're on it."
+
+        second = _json(client.post("/tickets/%s/status" % ticket_id,
+                                   json={"status": "resolved",
+                                         "message": "Root cause fixed."},
+                                   headers=GOOD_HEADERS))
+        assert second["update"]["status"] == "resolved"
+
+        # Message length ceiling mirrors the DB constraint.
+        too_long = client.post("/tickets/%s/status" % ticket_id,
+                               json={"status": "closed", "message": "x" * 2001},
+                               headers=GOOD_HEADERS)
+        assert too_long.status_code == 400
+
+        # Management read includes the history, newest first.
+        read = _json(client.get("/tickets/" + ticket_id, headers=GOOD_HEADERS))
+        messages = [u["message"] for u in read["updates"]]
+        assert messages == ["Root cause fixed.", "We're on it."]
+    finally:
+        use_table(prev_tickets)
+        use_table(prev_updates, "ticket_status_updates")
+
+
+def test_public_endpoint_needs_no_key_and_limits_fields():
+    _, _, client = get_app()
+    prev_tickets = use_table(FakeTable())
+    prev_updates = use_table(FakeTable(), "ticket_status_updates")
+    try:
+        _, data = make_ticket(client, email="private@example.com")
+        ticket_id = data["ticket"]["id"]
+        client.post("/tickets/%s/status" % ticket_id,
+                    json={"status": "in_progress", "message": "Digging in."},
+                    headers=GOOD_HEADERS)
+
+        # No X-Admin-Key on this request — and none needed.
+        response = client.get("/tickets/%s/public" % ticket_id)
+        assert response.status_code == 200
+        payload = _json(response)
+
+        # Status history present, newest first.
+        assert payload["updates"][0]["message"] == "Digging in."
+
+        # Reporter identity and description are withheld: the UUID link is
+        # shareable, so it must not hand out PII.
+        body = response.get_data(as_text=True)
+        assert "private@example.com" not in body
+        for field in ("name", "email", "company", "description"):
+            assert field not in payload["ticket"], field
+
+        assert client.get("/tickets/%s/public"
+                          % "00000000-0000-0000-0000-000000000000"
+                          ).status_code == 404
+        assert client.get("/tickets/not-a-uuid/public").status_code == 400
+    finally:
+        use_table(prev_tickets)
+        use_table(prev_updates, "ticket_status_updates")
+
+
 if __name__ == "__main__":
     raise SystemExit(run_module(globals()))

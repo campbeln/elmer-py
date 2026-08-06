@@ -49,9 +49,10 @@ shell's own command line and kill the test run itself).
 
 | Harness | Covers |
 |---|---|
-| `test_queue.js` | `/www/managetickets` renders with **zero script errors**, the key gate unlocks, queue rows load, CNRZ wordmark shows |
-| `test_view_and_status.js` | Deep-linked view page shows the full record; status page loads the context card, updates to `in_progress`, and the change **persists through Elmer to the database** |
-| `test_submit_form.js` | `/www/tickets.html` renders, severity cards select, a P2 ticket submits and is verified stored |
+| `test_queue.js` | `/www/managetickets` renders with **zero script errors**, the key gate unlocks, queue rows load, and clicking a row attempts navigation to the view page (observed via jsdom's navigation error — jsdom cannot navigate) |
+| `test_view_and_status.js` | Deep-linked view page shows the full record; status page updates to `in_progress` **with a message**, the change persists through Elmer to the database, and the message then appears in the view page's history |
+| `test_submit_form.js` | `/www/tickets.html` renders, severity cards select, a P2 ticket submits and is verified stored; the success state shows the public tracking link (`/www/view.html?id=`) and that URL resolves key-free |
+| `test_public_view.js` | `/www/view.html?id=` shows the status history newest-first with **no** key gate, and leaks neither reporter email nor description |
 | `test_ambient_key.js` | With a valid `X-Admin-Key` injected on every request (reverse proxy / header extension), the key prompt never appears and data loads directly; without it, the gate still guards |
 
 `_shared.js` holds the plumbing: a jsdom `ResourceLoader` that serves the

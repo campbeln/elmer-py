@@ -21,13 +21,14 @@
 <script type="text/babel" data-presets="react">
 (() => {
 const { useEffect, useState } = React;
-const { useBranding, Brand, Nav, KeyGate, api, SevBadge, StatusBadge, fmtDate } = window.Manage;
+const { useBranding, Brand, Nav, KeyGate, api, SevBadge, StatusBadge, fmtDate, UpdatesList } = window.Manage;
 
 function Lookup({ adminKey }) {
   // Deep-linkable from the queue page: /www/managetickets/view/?id=<uuid>
   const initial = new URLSearchParams(window.location.search).get("id") || "";
   const [ticketId, setTicketId] = useState(initial);
   const [ticket, setTicket] = useState(null);
+  const [updates, setUpdates] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -39,6 +40,7 @@ function Lookup({ adminKey }) {
     const res = await api("/tickets/" + encodeURIComponent(id.trim()), adminKey);
     if (res.ok && res.data && res.data.ticket) {
       setTicket(res.data.ticket);
+      setUpdates(res.data.updates || []);
     } else {
       setError((res.data && res.data.error) || "The ticket could not be read.");
     }
@@ -85,6 +87,10 @@ function Lookup({ adminKey }) {
           <div className="field">
             <span className="tag">Description</span>
             <div className="desc">{ticket.description}</div>
+          </div>
+          <div className="field">
+            <span className="tag">Status updates</span>
+            <UpdatesList updates={updates} />
           </div>
           <div className="field">
             <span className="tag">Timeline</span>

@@ -32,6 +32,8 @@ const { openPage, unlock, waitFor, setValue, sleep, api } = require("./_shared")
     await waitFor(() => doc.body.textContent.includes(ticket.subject),
       "context card");
     setValue(w, doc.querySelector("select"), "in_progress");
+    setValue(w, doc.querySelector("textarea"),
+             "Harness note: engineer assigned.");
     await sleep(120);
     [...doc.querySelectorAll("button")]
       .find((b) => /update status/i.test(b.textContent)).click();
@@ -39,6 +41,21 @@ const { openPage, unlock, waitFor, setValue, sleep, api } = require("./_shared")
     console.log("status page:", errors.length === 0 ? "PASS" : "FAIL");
     dom.window.close();
     if (errors.length) process.exit(1);
+  }
+
+  // -- the message now shows in the view page's history --
+  {
+    const { dom, errors } = await openPage(
+      "/www/managetickets/view/?id=" + ticket.id);
+    const doc = dom.window.document;
+    await unlock(dom.window);
+    await waitFor(() => doc.querySelector(".update-entry"), "history entry");
+    const shows = doc.body.textContent
+      .includes("Harness note: engineer assigned.");
+    console.log("history on view page:",
+      shows && errors.length === 0 ? "PASS" : "FAIL");
+    dom.window.close();
+    if (!shows || errors.length) process.exit(1);
   }
 
   const after = await api("/tickets/" + ticket.id);

@@ -256,8 +256,9 @@ at `/tickets`, with a matching web form served at `/www/tickets.html`.
 | `POST` | `/tickets` | Submit a ticket (`name`, `email`, `subject`, `description`, optional `company`, `priority` P1–P4, default P4) |
 | `GET` | `/tickets?priority=&status=&limit=&offset=` | List tickets, newest first |
 | `GET` | `/tickets/<uuid>` | Read one ticket |
-| `POST` | `/tickets/<uuid>/status` | Advance lifecycle: open → acknowledged → in_progress → resolved → closed |
-| `GET` | `/tickets/meta/priorities` | The severity ladder + statuses, consumed by the form |
+| `POST` | `/tickets/<uuid>/status` | Advance lifecycle (open → acknowledged → in_progress → resolved → closed), with an optional `message` (≤2000 chars) recorded in the `ticket_status_updates` history table |
+| `GET` | `/tickets/meta/priorities` | The severity ladder + statuses + branding, consumed by the forms |
+| `GET` | `/tickets/<uuid>/public` | **No admin key.** Read-only status view: subject, priority, lifecycle, timestamps, and the status-update history (newest first). Reporter identity and description are withheld — the unguessable UUID acts as a shareable capability link, so it must not hand out PII. Backs `/www/view.html?id=` |
 
 Validation mirrors the DB constraints (required fields, email shape, length
 ceilings, priority whitelist) so bad input fails fast with a useful message.
@@ -439,3 +440,23 @@ The project ships its test suite under `tests/` — a Python API layer
 execute the `/www` pages' actual JavaScript against a live server and a
 stub Supabase. See `tests/README.md` for coverage details and the
 conventions for extending it.
+
+---
+
+## Status history & public tracking
+
+Every status change is recorded in `ticket_status_updates`
+(`supabase/migrations/0002_ticket_status_updates.sql` — apply after 0001),
+with an optional message entered on the management status page. The
+management view page and `GET /tickets/<uuid>` include the full history
+newest-first; a history-read failure degrades to an empty list with an
+`updates_error` flag rather than failing the ticket read, and a
+history-write failure after a successful status change is reported as
+`history_error` rather than erroring (the change itself already took).
+
+`/www/view.html?id=<uuid>` is the public tracking page: no admin key, no
+gate, backed by `GET /tickets/<uuid>/public`. Queue rows in the
+management console are click-through to the view page. After a successful
+submission, `/www/tickets.html` shows the reporter their absolute tracking
+URL with a copy button (clipboard API where available, `execCommand`
+fallback for non-secure contexts).

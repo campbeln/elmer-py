@@ -52,10 +52,14 @@ class FakeTable:
         from libs.ish.ish import Obj
         return Obj({"ok": True, "status": status, "data": data})
 
+    _clock = [0]   # class-level counter -> distinct, ordered timestamps
+
     def insert(self, row):
         row = dict(row)
         row["id"] = str(uuid.uuid4())
-        row.setdefault("created_at", "2026-01-01T00:00:00+00:00")
+        FakeTable._clock[0] += 1
+        row.setdefault("created_at",
+                       "2026-01-01T00:00:%02d+00:00" % FakeTable._clock[0])
         row.setdefault("updated_at", row["created_at"])
         self.rows.append(row)
         return self._ok(201, [row])
@@ -102,11 +106,15 @@ class UnauthorizedTable:
         return self._err()
 
 
-def use_table(table):
-    """Swap the ticket route's storage backend; returns the previous one."""
+def use_table(table, name="tickets"):
+    """Swap a ticket route storage backend; returns the previous one.
+
+    name: "tickets" or "ticket_status_updates" (matches _table's cache keys).
+    """
     elmer, _, _ = get_app()
-    previous = elmer.app.data.get("tickets_table")
-    elmer.app.data.tickets_table = table
+    key = name + "_table"
+    previous = elmer.app.data.get(key)
+    elmer.app.data[key] = table
     return previous
 
 

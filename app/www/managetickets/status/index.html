@@ -31,6 +31,7 @@ function StatusUpdate({ adminKey }) {
   const [ticketId, setTicketId] = useState(initial);
   const [current, setCurrent] = useState(null);   // loaded ticket, for context
   const [status, setStatus] = useState("acknowledged");
+  const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [saved, setSaved] = useState(null);
@@ -56,11 +57,12 @@ function StatusUpdate({ adminKey }) {
     const res = await api(
       "/tickets/" + encodeURIComponent(ticketId.trim()) + "/status",
       adminKey,
-      { method: "POST", body: JSON.stringify({ status }) }
+      { method: "POST", body: JSON.stringify({ status, message }) }
     );
     if (res.ok && res.data && res.data.ticket) {
       setSaved(res.data.ticket);
       setCurrent(res.data.ticket);
+      setMessage("");
     } else {
       setError((res.data && res.data.error) || "The status could not be updated.");
     }
@@ -93,6 +95,14 @@ function StatusUpdate({ adminKey }) {
           <select value={status} onChange={(e) => setStatus(e.target.value)}>
             {STATUSES.map((s) => <option key={s} value={s}>{s.replace("_", " ")}</option>)}
           </select>
+        </label>
+
+        <label>
+          <span className="tag">Message <span style={{opacity:.5}}>(optional, shown to the reporter)</span></span>
+          <textarea value={message} maxLength={2000}
+                    onChange={(e) => setMessage(e.target.value)}
+                    placeholder="What changed, what's next, or what you found."
+                    style={{ minHeight: 90, resize: "vertical" }} />
         </label>
 
         {error && <div className="error" role="alert">{error}</div>}
