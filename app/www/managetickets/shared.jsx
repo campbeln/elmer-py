@@ -12,6 +12,11 @@
  *   SevBadge, StatusBadge, SEV_COLORS, fmtDate
  */
 
+(() => {
+// All declarations live inside this IIFE: babel-standalone runs
+// each text/babel script in the GLOBAL scope (it injects a plain
+// <script> element), so top-level const/function declarations from
+// different scripts collide. Only window.Manage escapes this scope.
 const { useEffect, useState } = React;
 
 const SEV_COLORS = { P1: "var(--p1)", P2: "var(--p2)", P3: "var(--p3)", P4: "var(--p4)" };
@@ -157,3 +162,4 @@ function fmtDate(iso) {
 window.Manage = {
   useBranding, Brand, Nav, KeyGate, api, SevBadge, StatusBadge, SEV_COLORS, fmtDate,
 };
+})();

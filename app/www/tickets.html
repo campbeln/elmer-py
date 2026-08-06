@@ -162,6 +162,7 @@
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 
 <script type="text/babel" data-presets="react">
+(() => {
 const { useEffect, useState } = React;
 
 /* Served from the same Elmer instance, so relative paths reach the API. */
@@ -341,6 +342,7 @@ function TicketForm() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<TicketForm />);
+})();
 </script>
 </body>
 </html>

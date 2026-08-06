@@ -1,0 +1,14 @@
+{
+  "name": "elmer-browser-tests",
+  "private": true,
+  "description": "Browser-faithful tests for the /www forms: jsdom executes the pages' real scripts (same React/Babel builds the CDN tags load) against a live Elmer server backed by a stub Supabase.",
+  "scripts": {
+    "test": "bash run.sh"
+  },
+  "devDependencies": {
+    "jsdom": "^24.0.0",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "@babel/standalone": "7.23.5"
+  }
+}

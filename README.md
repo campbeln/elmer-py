@@ -406,3 +406,14 @@ hard-coded: `"branding": { "name": "CNRZ", "area": "Support" }` in
 `GET /tickets/meta/priorities`. Change the config values and every form
 follows; if the API is unreachable the pages fall back to the same CNRZ
 default baked into their source.
+
+---
+
+## Tests
+
+The project ships its test suite under `tests/` — a Python API layer
+(`python3 tests/run_all.py`, no setup required) and a browser layer
+(`cd tests/browser && npm install && npm test`) whose jsdom harnesses
+execute the `/www` pages' actual JavaScript against a live server and a
+stub Supabase. See `tests/README.md` for coverage details and the
+conventions for extending it.

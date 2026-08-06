@@ -19,6 +19,7 @@
 <script type="text/babel" data-presets="react" src="/www/managetickets/shared.jsx"></script>
 
 <script type="text/babel" data-presets="react">
+(() => {
 const { useEffect, useState } = React;
 const { useBranding, Brand, Nav, KeyGate, api, SevBadge, StatusBadge } = window.Manage;
 
@@ -130,6 +131,7 @@ function Page() {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<Page />);
+})();
 </script>
 </body>
 </html>
