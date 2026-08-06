@@ -70,5 +70,12 @@
     "supabase": {
         "url": "",
         "serviceKey": ""
+    },
+    "branding": {
+        "name": "CNRZ",
+        "area": "Support"
+    },
+    "tickets": {
+        "adminKey": "eichahYoh3bie2ooch6echiW"
     }
 }

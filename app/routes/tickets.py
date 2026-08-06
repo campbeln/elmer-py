@@ -43,6 +43,7 @@ Endpoints (curl examples assume the dev port):
   curl -X GET   http://localhost:3001/tickets/meta/priorities
 """
 
+import hmac
 import os
 import re
 
@@ -213,6 +214,76 @@ def _validate_ticket(elmer, body):
     return row, errors
 
 
+def _admin_key(elmer):
+    """Resolve the management key; env wins over config, mirroring Supabase."""
+    return (os.environ.get("TICKETS_ADMIN_KEY")
+            or elmer.type.str.mk(
+                elmer.resolve(elmer.app.config, "tickets.adminKey")))
+
+
+def _admin_guard(elmer, request, response):
+    """Enforce the X-Admin-Key header on management endpoints.
+
+    Returns True when the request may proceed; otherwise writes the error
+    response and returns False. Fails CLOSED: with no key configured, the
+    management surface is off entirely rather than open to everyone.
+    """
+    configured = _admin_key(elmer)
+    if not configured:
+        elmer.app.error.response(
+            response,
+            Obj({
+                "message": "Ticket management is not enabled.",
+                "details": ("Set the TICKETS_ADMIN_KEY environment variable "
+                            "(or tickets.adminKey in app/config) to enable "
+                            "the management endpoints."),
+            }),
+            elmer.io.net.status.serverError.serviceUnavailable,
+        )
+        return False
+
+    supplied = elmer.type.str.mk(
+        elmer.type.obj.get(request.headers, "X-Admin-Key"))
+    if not supplied or not hmac.compare_digest(supplied, configured):
+        elmer.app.error.response(
+            response, "A valid X-Admin-Key header is required.",
+            elmer.io.net.status.clientError.unauthorized,
+        )
+        return False
+
+    return True
+
+
+def _diagnose(elmer, result):
+    """Enrich a failed Supabase response with an actionable hint.
+
+    PostgREST's own error bodies are accurate but terse ("Invalid API key");
+    this maps the handful of failure modes actually seen in practice to a
+    next step, without ever echoing back the configured URL or key.
+    """
+    message = elmer.type.str.mk(elmer.resolve(result.data, "message"))
+    hint = None
+
+    if result.status == 401 or "Invalid API key" in message:
+        hint = (
+            "Supabase rejected the configured key. Usually this means "
+            "SUPABASE_URL and SUPABASE_SERVICE_KEY belong to different "
+            "projects, the key was copied with extra whitespace/quotes, or "
+            "the Vercel deployment predates a change to those environment "
+            "variables (they require a redeploy to take effect)."
+        )
+    elif result.status == 404:
+        hint = (
+            "The 'tickets' table was not found. Confirm "
+            "supabase/migrations/0001_tickets.sql has been applied to this "
+            "project."
+        )
+    elif result.status == 0:
+        hint = "Supabase could not be reached. Check SUPABASE_URL for typos."
+
+    return Obj({"supabase": result.data, "hint": hint}) if hint else result.data
+
+
 def apply(elmer, router, base_router=None):
     """Define the ticket routes on the passed router."""
 
@@ -236,7 +307,21 @@ def apply(elmer, router, base_router=None):
         response.status(200).json({
             "priorities": PRIORITIES,
             "statuses": STATUSES,
+            "branding": elmer.extend(
+                Obj({"name": "CNRZ", "area": "Support"}),
+                elmer.resolve(elmer.app.config, "branding"),
+            ),
         })
+
+    # ----------------------------------------------
+    # POST /tickets/manage/verify — key check for the management forms
+    # ----------------------------------------------
+    @router.post("/manage/verify")
+    def _manage_verify(request, response):
+        # _admin_guard writes the 401/503 itself on failure.
+        if not _admin_guard(elmer, request, response):
+            return
+        response.status(200).json({"success": True})
 
     # ----------------------------------------------
     # POST /tickets — submit a ticket
@@ -264,7 +349,7 @@ def apply(elmer, router, base_router=None):
             return elmer.app.error.response(
                 response,
                 Obj({"message": "Ticket could not be saved.",
-                     "details": result.data}),
+                     "details": _diagnose(elmer, result)}),
                 elmer.io.net.status.serverError.badGateway,
             )
 
@@ -279,6 +364,9 @@ def apply(elmer, router, base_router=None):
     # ----------------------------------------------
     @router.get("/")
     def _list(request, response):
+        if not _admin_guard(elmer, request, response):
+            return
+
         table = _table(elmer)
         if table is None:
             return unavailable(response)
@@ -317,7 +405,7 @@ def apply(elmer, router, base_router=None):
             return elmer.app.error.response(
                 response,
                 Obj({"message": "Tickets could not be read.",
-                     "details": result.data}),
+                     "details": _diagnose(elmer, result)}),
                 elmer.io.net.status.serverError.badGateway,
             )
 
@@ -332,6 +420,9 @@ def apply(elmer, router, base_router=None):
     # ----------------------------------------------
     @router.get("/:id")
     def _read(request, response):
+        if not _admin_guard(elmer, request, response):
+            return
+
         table = _table(elmer)
         if table is None:
             return unavailable(response)
@@ -344,8 +435,16 @@ def apply(elmer, router, base_router=None):
             )
 
         result = table.select({"id": "eq." + ticket_id}, limit=1)
+        if not result.ok:
+            return elmer.app.error.response(
+                response,
+                Obj({"message": "Ticket could not be read.",
+                     "details": _diagnose(elmer, result)}),
+                elmer.io.net.status.serverError.badGateway,
+            )
+
         rows = result.data or []
-        if not result.ok or not rows:
+        if not rows:
             return elmer.app.error.response(
                 response, "Ticket not found.",
                 elmer.io.net.status.clientError.notFound,
@@ -358,6 +457,9 @@ def apply(elmer, router, base_router=None):
     # ----------------------------------------------
     @router.post("/:id/status")
     def _set_status(request, response):
+        if not _admin_guard(elmer, request, response):
+            return
+
         table = _table(elmer)
         if table is None:
             return unavailable(response)
@@ -379,8 +481,16 @@ def apply(elmer, router, base_router=None):
             )
 
         result = table.update({"id": "eq." + ticket_id}, {"status": status})
+        if not result.ok:
+            return elmer.app.error.response(
+                response,
+                Obj({"message": "Ticket could not be updated.",
+                     "details": _diagnose(elmer, result)}),
+                elmer.io.net.status.serverError.badGateway,
+            )
+
         rows = result.data or []
-        if not result.ok or not rows:
+        if not rows:
             return elmer.app.error.response(
                 response, "Ticket not found.",
                 elmer.io.net.status.clientError.notFound,

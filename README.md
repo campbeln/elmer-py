@@ -314,3 +314,95 @@ work as expected; routes that depend on in-memory state persisting *across*
 requests — the proxy registry and cache being the main ones — are not a
 good fit for this deployment target without moving that state to Supabase,
 Redis, or similar.
+
+
+### Troubleshooting: "Invalid API Key"
+
+If `/tickets` returns Supabase's own `Invalid API Key` message (surfaced
+through this API's `details` field), the request *is* reaching Supabase —
+Elmer's own "Ticket storage is not configured" 503 would show instead if
+`SUPABASE_URL`/`SUPABASE_SERVICE_KEY` weren't set at all. So the fix is on
+the credentials, not the code. In order of likelihood:
+
+1. **Redeploy after setting/changing env vars.** Vercel bakes environment
+   variables in at deploy time; saving them in the dashboard does not
+   retroactively apply to an already-running deployment. Trigger a new
+   deployment (`vercel --prod`, or **Redeploy** in the dashboard) after any
+   change.
+2. **Check the environment scope.** Vercel env vars are scoped to
+   Production / Preview / Development independently — confirm
+   `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` are enabled for whichever
+   scope serves the URL you're hitting.
+3. **Re-copy the key fresh**, watching for accidental leading/trailing
+   whitespace or quotes from pasting. Supabase now issues two key formats
+   side by side — legacy JWT `service_role` keys (Dashboard → **Settings →
+   API Keys → Legacy API Keys**) and the newer `sb_secret_...` keys
+   (**Settings → API Keys → API Keys → Secret keys**). Either works as
+   `SUPABASE_SERVICE_KEY`; legacy keys are slated for deprecation by the
+   end of 2026, so prefer the `sb_secret_...` key for new setups. Never use
+   the `sb_publishable_...` or legacy `anon` key here — those lack the
+   privileges this API needs and Supabase's own docs warn a secret key
+   used from a browser is rejected outright, so keep it server-side only.
+4. **Confirm the URL and key are from the same project.** Mixing a URL
+   from one Supabase project with a key from another produces exactly this
+   error.
+5. **Isolate Elmer from Supabase** by testing the pair directly:
+   ```bash
+   curl "https://YOUR_PROJECT_REF.supabase.co/rest/v1/tickets?select=id&limit=1" \
+        -H "apikey: YOUR_KEY" \
+        -H "Authorization: Bearer YOUR_KEY"
+   ```
+   If this also fails, the problem is entirely the Supabase credentials —
+   nothing to do with Vercel or Elmer. If it succeeds but the deployed API
+   still fails, the environment variable isn't reaching the deployment
+   (see points 1–2).
+
+---
+
+## Ticket management console
+
+Three staff-facing forms under `app/www/managetickets/`, in the same visual
+system as the public submission form, covering the rest of the `/tickets`
+API:
+
+| URL | Backs | Purpose |
+|---|---|---|
+| `/www/managetickets` | `GET /tickets` | Filterable queue (severity, status), newest first |
+| `/www/managetickets/view` | `GET /tickets/<uuid>` | Full record for one ticket; deep-linkable via `?id=` |
+| `/www/managetickets/status` | `POST /tickets/<uuid>/status` | Advance a ticket through its lifecycle |
+
+They share one stylesheet and one component file (`shared.css`,
+`shared.jsx`: key gate, nav, badges, fetch wrapper), and cross-link — queue
+rows open the view page, which links to the status page, carrying the
+ticket id in the query string.
+
+### Management key
+
+The management surface requires a second secret, separate from the Supabase
+key: set the `TICKETS_ADMIN_KEY` environment variable (or
+`tickets.adminKey` in `app/config`; the environment wins). The guard
+applies **server-side** to `GET /tickets`, `GET /tickets/<uuid>` and
+`POST /tickets/<uuid>/status`, which must carry a matching `X-Admin-Key`
+header — the forms are a convenience on top, not the enforcement point.
+`POST /tickets` (submission) and `/tickets/meta/priorities` remain public.
+
+The guard **fails closed**: with no key configured, management endpoints
+return `503 Ticket management is not enabled` rather than opening up.
+Comparison uses `hmac.compare_digest`. Each form gates its UI through
+`POST /tickets/manage/verify` before loading data; the entered key is held
+in page memory only — never persisted, never placed in a URL.
+
+Note the honest limits of this scheme: it's one shared bearer secret over
+whatever transport you serve — fine for a small internal console behind
+HTTPS, but it is not per-user auth, and anyone holding the key can do
+everything. For per-person access or audit trails, put the console behind
+the JWT login flow Elmer already ships instead.
+
+### Branding
+
+The wordmark on all four forms comes from config rather than being
+hard-coded: `"branding": { "name": "CNRZ", "area": "Support" }` in
+`app/config/base.json`, served to the pages via
+`GET /tickets/meta/priorities`. Change the config values and every form
+follows; if the API is unreachable the pages fall back to the same CNRZ
+default baked into their source.

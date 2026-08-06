@@ -21,6 +21,7 @@ since ``$`` is not a legal identifier character in Python.
 """
 
 import json
+import os
 import re
 from functools import wraps
 
@@ -549,7 +550,13 @@ class Server:
         endpoint = "static_%s" % re.sub(r"[^a-zA-Z0-9]", "_", url_prefix)
 
         def view(filename=""):
-            return send_from_directory(directory, filename or "index.html")
+            # Express's static middleware serves a directory's index.html when
+            # the path names a directory; mirror that so routes like
+            # /www/managetickets/status resolve to .../status/index.html.
+            target = filename or "index.html"
+            if os.path.isdir(os.path.join(directory, target)):
+                target = target.rstrip("/") + "/index.html"
+            return send_from_directory(directory, target)
 
         self.flask.add_url_rule(
             url_prefix + "/", endpoint=endpoint, view_func=view, methods=["GET"]

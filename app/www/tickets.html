@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="theme-color" content="#000000" />
-<title>Support — Submit a ticket</title>
+<title>CNRZ Support — Submit a ticket</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet" />
@@ -191,10 +191,18 @@ function TicketForm() {
   const [busy, setBusy] = useState(false);
   const [ticket, setTicket] = useState(null);
 
+  const [branding, setBranding] = useState({ name: "CNRZ", area: "Support" });
+
   useEffect(() => {
     fetch(API_BASE + "/meta/priorities")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d && d.priorities) setPriorities(d.priorities); })
+      .then((d) => {
+        if (d && d.priorities) setPriorities(d.priorities);
+        if (d && d.branding && d.branding.name) {
+          setBranding(d.branding);
+          document.title = d.branding.name + " Support — Submit a ticket";
+        }
+      })
       .catch(() => {});
   }, []);
 
@@ -245,9 +253,9 @@ function TicketForm() {
     <React.Fragment>
       <header className="brand">
         <span className="bolt" aria-hidden="true">⚡</span>
-        <span className="word">BLTZ</span>
+        <span className="word">{branding.name}</span>
         <span className="div">/</span>
-        <span className="area">Support</span>
+        <span className="area">{branding.area || "Support"}</span>
       </header>
 
       <p className="eyebrow">Runtime support · severity triage</p>
